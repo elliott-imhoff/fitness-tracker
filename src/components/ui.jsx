@@ -1,4 +1,4 @@
-import { TYPE_STYLE } from "../plan.js";
+import { TYPE_STYLE } from "../utils.js";
 
 export const cardSt   = { background:"#fff", borderRadius:14, border:"0.5px solid #E5E2DB", padding:"16px 18px" };
 export const inputSt  = { fontSize:14, padding:"8px 12px", borderRadius:10, border:"0.5px solid #D8D5CC", background:"#F5F3EF", color:"#1A1A1A", width:"100%", boxSizing:"border-box", fontFamily:"inherit", outline:"none" };

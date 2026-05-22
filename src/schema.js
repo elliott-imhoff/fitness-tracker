@@ -1,5 +1,5 @@
 import Ajv from "ajv";
-import { PLAN_TYPES } from "./plan.js";
+import { PLAN_TYPES } from "./utils.js";
 
 // Full JSON schema for a daily log entry.
 // This is the single source of truth for both validation and prompt generation.

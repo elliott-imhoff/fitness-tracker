@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { TYPE_STYLE, dotLabel, fmtPlanWorkout } from "../plan.js";
+import { TYPE_STYLE, dotLabel } from "../utils.js";
 import { fmtKey, fmtDisplay, isToday, startOfWeek, addDays, MONTHS, DOWS } from "../utils.js";
 import { cardSt, Badge } from "./ui.jsx";
 
@@ -36,7 +36,7 @@ export function PlanTab({onViewLog, summary, plan, planMeta={}}) {
     const skipped = isSkipped(key);
     const logged = isLogged(key);
     const tod = isToday(day);
-    const [l1,l2] = dotLabel(fmtPlanWorkout(dayPlan));
+    const [l1,l2] = dotLabel(dayPlan);
     const past = day < today && !isToday(day);
     const missed = past && dayPlan && !logged && type!=="Rest";
     const missedLogged = past && logged && !done && !skipped && type!=="Rest";
@@ -60,7 +60,7 @@ export function PlanTab({onViewLog, summary, plan, planMeta={}}) {
     </div>;
   }
 
-  const planDays = Object.keys(P).length || 154;
+  const planDays = Object.keys(P).length;
   const daysToRace = RACE_DATE ? Math.ceil((RACE_DATE - new Date(new Date().toDateString())) / 86400000) : null;
   const weeksToRace = daysToRace != null ? Math.floor(daysToRace / 7) : null;
   const planKeys = Object.keys(P);

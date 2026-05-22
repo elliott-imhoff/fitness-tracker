@@ -63,7 +63,7 @@ export function ProfileTab({ profile, onProfileChange, summary={} }) {
   const latestWeight = (() => {
     const entries = Object.entries(summary)
       .filter(([, e]) => e && e.weight != null && e.weight !== "" && !isNaN(parseFloat(e.weight)))
-      .sort(([a], [b]) => b < a ? -1 : 1);
+      .sort(([a], [b]) => a < b ? 1 : -1);
     return entries.length ? String(parseFloat(entries[0][1].weight)) : "";
   })();
 

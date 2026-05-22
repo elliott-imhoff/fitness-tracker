@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { fmtKey, fmtDisplay, startOfWeek, addDays, DOWS } from "../utils.js";
-import { fmtPlanWorkout } from "../plan.js";
+import { fmtPlanWorkout } from "../utils.js";
 import { cardSt } from "./ui.jsx";
 import { SNAPSHOT_SCHEMA_PROMPT } from "../schema.js";
 import { loadEntry } from "../storage.js";
@@ -53,9 +53,9 @@ function buildTrackingPrompt(plan, planMeta={}, profile={}, recentEntries=[]) {
   const bmr = (profile.age && profile.heightCm && latestWeightLb)
     ? Math.round(10 * wkg + 6.25 * profile.heightCm - 5 * profile.age + (profile.sex === "female" ? -161 : 5))
     : null;
-  const proteinGoal   = profile.proteinGoal   ?? 170;
-  const hydrationGoal = profile.hydrationGoal ?? 100;
-  const sleepGoal     = profile.sleepGoal     ?? 7;
+  const proteinGoal   = profile.proteinGoal;
+  const hydrationGoal = profile.hydrationGoal;
+  const sleepGoal     = profile.sleepGoal;
   const ct = profile.calorieTarget;
   const calorieStr = ct == null ? "maintenance"
     : ct === 0  ? "even (maintenance)"
@@ -89,15 +89,15 @@ function buildTrackingPrompt(plan, planMeta={}, profile={}, recentEntries=[]) {
     ["breakfast","lunch","snacks","dinner"].forEach(meal => {
       if (food[meal]) lines.push("  "+meal+": "+food[meal]+(food[meal+"_cal"]?" ("+food[meal+"_cal"]+" kcal"+(food[meal+"_pro"]?", "+food[meal+"_pro"]+"g protein":"")+")":""));
     });
-    if (e.other_activity && e.other_activity.length) lines.push("  other activity: "+e.other_activity.map(a=>a.name+(a.duration?" "+a.duration+"min":"")).join("; "));
+    if (e.other_activity && e.other_activity.length) lines.push("  other activity: "+e.other_activity.map(a=>a.description+(a.duration?" "+a.duration+"min":"")).join("; "));
     if (e.journal) lines.push("  journal: "+e.journal);
-    if (e.energy) lines.push("  energy: "+e.energy+"/5");
+    if (e.energy) lines.push("  energy: "+e.energy);
     return lines.join("\n");
   });
 
   return [
     "CONTEXT & PURPOSE",
-    `You are my daily fitness and nutrition logging assistant for a structured ${planWeeks}-week marathon training plan. Throughout the day I will post my workouts, meals, and other activity as I do them. Your job is to:`,
+    `You are my daily fitness and nutrition logging assistant for a structured ${planWeeks}-week ${goalName} training plan. Throughout the day I will post my workouts, meals, and other activity as I do them. Your job is to:`,
     "- Log everything I post and keep a running record for the day",
     "- Track cumulative nutrition (calories, protein, hydration) and update totals as I log meals",
     calorieInstr,
@@ -114,14 +114,14 @@ function buildTrackingPrompt(plan, planMeta={}, profile={}, recentEntries=[]) {
     profile.goals || "","",
     "CURRENT TRAINING PLAN",
     `${planWeeks}-week plan${startDate ? ", started "+startDate : ""}, race ${goalDateShort}`,
-    "Currently " + currentWeekLabel,"",
+    ...(currentWeekLabel ? ["Currently " + currentWeekLabel] : []),"",
     "Full schedule:",
     ...planToWeekSchedule(plan),
     "",
     "PHYSICAL FLAGS TO MONITOR",
     profile.physicalFlags || "[No flags set — add in Profile tab]","",
     "NUTRITION CONTEXT",
-    `Protein goal: ${proteinGoal}g/day | Hydration goal: ${hydrationGoal} oz/day | Calorie target: ${calorieStr}`,"",
+    [proteinGoal!=null&&`Protein goal: ${proteinGoal}g/day`, hydrationGoal!=null&&`Hydration goal: ${hydrationGoal} oz/day`, sleepGoal!=null&&`Sleep goal: ${sleepGoal} hr/night`, `Calorie target: ${calorieStr}`].filter(Boolean).join(" | "),"",
     "UPCOMING WORKOUTS THIS WEEK",
     upcomingWorkouts||"[no upcoming workouts found]","",
     "RECENT LOG (last 7 days)",

@@ -1,7 +1,16 @@
 import { useState, useEffect, useCallback } from "react";
 import { cardSt, Spinner, Empty, Badge, EditCard, Metric, Field, TArea, saveBtnSt, inputSt } from "./ui.jsx";
 import { fmtKey, fmtDisplay, isToday } from "../utils.js";
-import { emptyEntry, matchesPlan, fmtPlanWorkout, PLAN_TYPES } from "../plan.js";
+import { matchesPlan, PLAN_TYPES } from "../utils.js";
+
+const emptyEntry = () => ({
+  savedAt:null, workout_status:null,
+  workout:{ type:"", distance:"", pace:"", hr:"", hr_peak:"", vdot:"", rep_distance_m:"", rep_count:"", rep_times:"", structure:"", duration:"", calories_burned:"", exercises:[], notes:"" },
+  other_activity: [],
+  metrics:{ calIn:"", calOut:"", protein:"", hydration:"", sleep:"", weight:"" },
+  food:{ breakfast:"", lunch:"", snacks:"", dinner:"", breakfast_cal:0, breakfast_pro:0, lunch_cal:0, lunch_pro:0, snacks_cal:0, snacks_pro:0, dinner_cal:0, dinner_pro:0 },
+  energy:"", body:"", sleep_notes:"", journal:""
+});
 import { entryToSummary, saveSummary, loadEntry, saveEntry, savePlanDay } from "../storage.js";
 import { validateEntry } from "../schema.js";
 
@@ -40,8 +49,9 @@ function repTimesToAvgPace(repTimes, repDistM) {
 }
 function estimateVDOT(w, hrRest=HR_REST_DEFAULT, hrMax=HR_MAX_DEFAULT) {
   const type = (w.type || "").toLowerCase();
-  const isInterval = type.includes("interval") || type.includes("repeat");
-  const isSteady = type.includes("easy") || type.includes("long") || type.includes("recovery");
+  const isInterval = type.includes("interval");
+  const isRace     = type.includes("race");
+  const isSteady   = type.includes("easy") || type.includes("long");
   const hr = parseFloat(w.hr);
   if (isInterval && w.rep_distance_m) {
     const pace = repTimesToAvgPace(w.rep_times, w.rep_distance_m) || w.pace;
@@ -56,11 +66,11 @@ function estimateVDOT(w, hrRest=HR_REST_DEFAULT, hrMax=HR_MAX_DEFAULT) {
   if (!pace) return "";
   const dist = parseFloat(w.distance);
   if (!dist) return "";
-  if (dist < 3) return "";
+  if (!isRace && dist < 3) return "";
   const D = dist * 1609.34, T = pace * dist;
   const vdotPace = calcVDOT(D, T);
   if (isNaN(vdotPace) || vdotPace <= 0) return "";
-  if (isSteady && !isNaN(hr) && hr > hrRest && hr < hrMax) {
+  if (isSteady && !isRace && !isNaN(hr) && hr > hrRest && hr < hrMax) {
     const pctHRmax = hr / hrMax;
     const vo2AtPace = -4.60 + 0.182258 * (D/T) + 0.000104 * Math.pow(D/T, 2);
     const aerobicVDOT = vo2AtPace / pctHRmax;
@@ -91,6 +101,7 @@ function WorkoutDisplay({w}) {
     ["Duration",   w.duration        ? w.duration+" min"         : null],
     ["Cal burned", w.calories_burned ? w.calories_burned+" kcal" : null],
     ["Structure",  w.structure       || null],
+    ["Rep dist",   w.rep_distance_m   ? w.rep_distance_m+" m"   : null],
     ["Reps",       w.rep_times       ? w.rep_times.split(",").join(", ") : null],
     ["Est. VDOT",  w.vdot            ? Number(w.vdot).toFixed(1) : null],
     ["Notes",      w.notes           || null],
@@ -113,19 +124,19 @@ function WorkoutDisplay({w}) {
 function MetricsDisplay({m, nc, goals={}}) {
   const ncColor=nc===null?undefined:nc<0?"#C0392B":"#1D9E75";
   const ncVal=nc===null?null:(nc>0?"+":"")+Math.round(nc);
-  const proteinGoal   = goals.proteinGoal   ?? 170;
-  const hydrationGoal = goals.hydrationGoal ?? 100;
-  const sleepGoal     = goals.sleepGoal     ?? 7;
+  const proteinGoal   = goals.proteinGoal;
+  const hydrationGoal = goals.hydrationGoal;
+  const sleepGoal     = goals.sleepGoal;
   return <div style={{display:"flex",flexDirection:"column",gap:8}}>
     <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:8}}>
       <Metric label="Cal in"    value={m.calIn?Number(m.calIn).toLocaleString():null} sub="kcal"/>
       <Metric label="Cal out"   value={m.calOut||null} sub="exercise"/>
       <Metric label="Net cal"   value={ncVal} sub="kcal" hl={ncColor}/>
-      <Metric label="Protein"   value={m.protein?m.protein+"g":null} sub={`goal ${proteinGoal}g`}/>
+      <Metric label="Protein"   value={m.protein?m.protein+"g":null} sub={proteinGoal!=null?`goal ${proteinGoal}g`:undefined}/>
     </div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}>
-      <Metric label="Hydration" value={m.hydration?m.hydration+" oz":null} sub={`goal ${hydrationGoal} oz`}/>
-      <Metric label="Sleep"     value={m.sleep?m.sleep+" hr":null} sub={`goal ${sleepGoal} hr`}/>
+      <Metric label="Hydration" value={m.hydration?m.hydration+" oz":null} sub={hydrationGoal!=null?`goal ${hydrationGoal} oz`:undefined}/>
+      <Metric label="Sleep"     value={m.sleep?m.sleep+" hr":null} sub={sleepGoal!=null?`goal ${sleepGoal} hr`:undefined}/>
       <Metric label="Weight"    value={m.weight?m.weight+" lb":null}/>
     </div>
   </div>;
@@ -165,6 +176,7 @@ function WorkoutEditor({w,onSave}) {
       <Field label="Duration (min)" value={v.duration}        onChange={x=>u("duration",x)}        type="number"/>
       <Field label="Cal burned"     value={v.calories_burned} onChange={x=>u("calories_burned",x)} type="number"/>
       <Field label="Structure"      value={v.structure}       onChange={x=>u("structure",x)}       placeholder="e.g. 6x400m"/>
+      <Field label="Rep dist (m)"   value={v.rep_distance_m}  onChange={x=>u("rep_distance_m",x)}  type="number" placeholder="e.g. 400"/>
       <Field label="Rep times"      value={v.rep_times}       onChange={x=>u("rep_times",x)}       placeholder="1:29,1:32,..."/>
       <Field label="VDOT override"  value={v.vdot}            onChange={x=>u("vdot",x)}            placeholder="auto-calculated"/>
     </div>

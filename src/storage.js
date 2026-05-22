@@ -83,7 +83,7 @@ export async function savePlanDay(date, dayPlan) {
 }
 
 export async function syncSummaryFromEntries(plan) {
-  const keys = Object.keys(plan || PLAN);
+  const keys = Object.keys(plan || {});
   const result = {};
   await Promise.all(keys.map(async key => {
     const entry = await loadEntry(key);

@@ -156,12 +156,12 @@ export function DashboardTab({ summary, profile={} }) {
     return [...buckets.values()].map(b => ({
       date: b.firstDate,
       val: b.vals.reduce((s,v)=>s+v,0) / b.vals.length,
-      lbl: grouping === "7d" ? `Wk ${b.idx+1}` : MO[new Date(b.firstDate+"T00:00:00").getMonth()]
+      lbl: grouping === "7d" ? `Wk ${b.idx+1}` : MONTHS[new Date(b.firstDate+"T00:00:00").getMonth()]
     }));
   }
 
   const VDOT_TYPE_GROUPS = {
-    aerobic:  e => { const t=(e.type||"").toLowerCase(); return t.includes("long")||t.includes("easy")||t.includes("recovery"); },
+    aerobic:  e => { const t=(e.type||"").toLowerCase(); return t.includes("long")||t.includes("easy"); },
     interval: e => { const t=(e.type||"").toLowerCase(); return t.includes("interval")||t.includes("repeat"); },
     long:     e => (e.type||"").toLowerCase().includes("long"),
     easy:     e => { const t=(e.type||"").toLowerCase(); return t.includes("easy")||t.includes("recovery"); },
@@ -263,8 +263,8 @@ export function DashboardTab({ summary, profile={} }) {
     </div>
 
     {/* Protein & Sleep */}
-    {[{label:"Protein",data:proteinData,color:"#8B85D4",goal:profile.proteinGoal??170,unit:"g",today:todayPro,avg:avgPro,dp:0},
-      {label:"Sleep",data:sleepData,color:"#7DBFA0",goal:profile.sleepGoal??7,unit:" hr",today:todaySleep,avg:avgSleep,dp:1}
+    {[{label:"Protein",data:proteinData,color:"#8B85D4",goal:profile.proteinGoal??null,unit:"g",today:todayPro,avg:avgPro,dp:0},
+      {label:"Sleep",data:sleepData,color:"#7DBFA0",goal:profile.sleepGoal??null,unit:" hr",today:todaySleep,avg:avgSleep,dp:1}
     ].map(({label,data,color,goal,unit,today,avg,dp})=>(
       <div key={label} style={cardSt}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
@@ -285,7 +285,7 @@ export function DashboardTab({ summary, profile={} }) {
         <span style={{fontSize:15,fontWeight:600,color:"#1A1A1A"}}>Hydration</span>
         <AvgToggle value={bWindow} setValue={setBWindow} options={["1d","7d","30d"]}/>
       </div>
-      <BarChart data={hydData} goalLine={profile.hydrationGoal??100} barColor="#5B9BD5" showDow={false}/>
+      <BarChart data={hydData} goalLine={profile.hydrationGoal??null} barColor="#5B9BD5" showDow={false}/>
       {todayHyd!=null&&<div style={{fontSize:13,color:"#888",marginTop:6}}>
         Today <strong style={{color:"#1A1A1A"}}>{Math.round(todayHyd)} oz</strong>
         {avgHyd!=null&&<span> · avg <strong style={{color:"#1A1A1A"}}>{Math.round(avgHyd)} oz</strong></span>}
