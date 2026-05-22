@@ -1,122 +1,45 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useState, useEffect } from "react";
+import { loadSummary, syncSummaryFromEntries } from "./storage.js";
+import { LogTab } from "./components/LogTab.jsx";
+import { PlanTab } from "./components/PlanTab.jsx";
+import { DashboardTab } from "./components/DashboardTab.jsx";
+import { ToolsTab } from "./components/ToolsTab.jsx";
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function AthleteLog() {
+  const [tab, setTab] = useState("log");
+  const [date, setDate] = useState(new Date());
+  const [summary, setSummary] = useState({});
+  const [syncing, setSyncing] = useState(false);
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
+  useEffect(() => { loadSummary().then(s => setSummary(s)); }, []);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    const rebuilt = await syncSummaryFromEntries();
+    setSummary(rebuilt);
+    setSyncing(false);
+  };
+
+  return <div style={{fontFamily:"system-ui,-apple-system,sans-serif",maxWidth:660,margin:"0 auto",background:"#F0EDE8",minHeight:"100vh"}}>
+    <div style={{background:"#fff",borderBottom:"0.5px solid #E5E2DB",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10}}>
+      <span style={{fontSize:17,fontWeight:600,color:"#1A1A1A"}}>Athlete log</span>
+      <div style={{width:24}}/>
+    </div>
+
+    <div style={{background:"#fff",borderBottom:"0.5px solid #E5E2DB",display:"flex"}}>
+      {["log","plan","dashboard","tools"].map(t => (
+        <button key={t} onClick={() => setTab(t)} style={{flex:1,padding:"11px 0",fontSize:13,fontWeight:tab===t?500:400,color:tab===t?"#1A1A1A":"#999",background:"none",border:"none",borderBottom:tab===t?"2px solid #1A1A1A":"2px solid transparent",cursor:"pointer",textTransform:"capitalize",marginBottom:-0.5}}>
+          {t.charAt(0).toUpperCase() + t.slice(1)}
         </button>
-      </section>
+      ))}
+    </div>
 
-      <div className="ticks"></div>
+    {tab === "log" && <LogTab date={date} setDate={setDate} summary={summary} onSummaryChange={setSummary}/>}
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+    {tab === "plan" && <PlanTab onViewLog={d => { setDate(d); setTab("log"); }} summary={summary}/>}
+    {tab === "dashboard" && <DashboardTab summary={summary}/>}
+    {tab === "tools" && <ToolsTab onSync={handleSync} syncing={syncing}/>}
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+    <style>{"@keyframes spin{to{transform:rotate(360deg)}} textarea:focus,input:focus{outline:none;border-color:#B8B5AE!important;}"}</style>
+  </div>;
 }
-
-export default App
