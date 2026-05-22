@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { loadSummary, syncSummaryFromEntries } from "./storage.js";
+import { loadSummary, loadPlan, syncSummaryFromEntries } from "./storage.js";
 import { LogTab } from "./components/LogTab.jsx";
 import { PlanTab } from "./components/PlanTab.jsx";
 import { DashboardTab } from "./components/DashboardTab.jsx";
@@ -9,13 +9,17 @@ export default function AthleteLog() {
   const [tab, setTab] = useState("log");
   const [date, setDate] = useState(new Date());
   const [summary, setSummary] = useState({});
+  const [plan, setPlan] = useState({});
   const [syncing, setSyncing] = useState(false);
 
-  useEffect(() => { loadSummary().then(s => setSummary(s)); }, []);
+  useEffect(() => {
+    loadSummary().then(s => setSummary(s));
+    loadPlan().then(p => setPlan(p));
+  }, []);
 
   const handleSync = async () => {
     setSyncing(true);
-    const rebuilt = await syncSummaryFromEntries();
+    const rebuilt = await syncSummaryFromEntries(plan);
     setSummary(rebuilt);
     setSyncing(false);
   };
@@ -34,11 +38,11 @@ export default function AthleteLog() {
       ))}
     </div>
 
-    {tab === "log" && <LogTab date={date} setDate={setDate} summary={summary} onSummaryChange={setSummary}/>}
+    {tab === "log" && <LogTab date={date} setDate={setDate} summary={summary} onSummaryChange={setSummary} plan={plan} onPlanChange={setPlan}/>}
 
-    {tab === "plan" && <PlanTab onViewLog={d => { setDate(d); setTab("log"); }} summary={summary}/>}
+    {tab === "plan" && <PlanTab onViewLog={d => { setDate(d); setTab("log"); }} summary={summary} plan={plan}/>}
     {tab === "dashboard" && <DashboardTab summary={summary}/>}
-    {tab === "tools" && <ToolsTab onSync={handleSync} syncing={syncing}/>}
+    {tab === "tools" && <ToolsTab onSync={handleSync} syncing={syncing} plan={plan}/>}
 
     <style>{"@keyframes spin{to{transform:rotate(360deg)}} textarea:focus,input:focus{outline:none;border-color:#B8B5AE!important;}"}</style>
   </div>;

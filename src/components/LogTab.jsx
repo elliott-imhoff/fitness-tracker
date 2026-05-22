@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
-import { cardSt, Spinner, Empty, Badge, EditCard, Metric, Field, TArea, saveBtnSt } from "./ui.jsx";
+import { cardSt, Spinner, Empty, Badge, EditCard, Metric, Field, TArea, saveBtnSt, inputSt } from "./ui.jsx";
 import { fmtKey, fmtDisplay, isToday } from "../utils.js";
-import { emptyEntry, PLAN, getWorkoutType, fmtWorkout, matchesPlan } from "../plan.js";
-import { entryToSummary, saveSummary, loadEntry, saveEntry } from "../storage.js";
+import { emptyEntry, fmtWorkout, matchesPlan, fmtPlanWorkout, PLAN_TYPES } from "../plan.js";
+import { entryToSummary, saveSummary, loadEntry, saveEntry, savePlanDay } from "../storage.js";
 import { validateEntry } from "../schema.js";
 
 // --- vdot ---
@@ -69,8 +69,19 @@ function estimateVDOT(w) {
   return String(Math.round(vdotPace * 10) / 10);
 }
 
+function WorkoutStatusToggle({status, onChange}) {
+  const STATES = [null, "done", "skipped"];
+  const next = () => onChange(STATES[(STATES.indexOf(status) + 1) % STATES.length]);
+  const cfg = {
+    done:    {label:"✓ Done",    bg:"#E6F7F1", color:"#0E7A57", border:"#A8D5C2"},
+    skipped: {label:"✕ Skipped", bg:"#FEF0EF", color:"#C0392B", border:"#F5C6C2"},
+    null:    {label:"Not entered",bg:"#F5F3EF", color:"#AAA",   border:"#D8D5CC"},
+  };
+  const c = cfg[status] ?? cfg.null;
+  return <button onClick={next} style={{fontSize:12,padding:"4px 10px",borderRadius:20,border:`0.5px solid ${c.border}`,background:c.bg,color:c.color,cursor:"pointer",fontWeight:500,whiteSpace:"nowrap",flexShrink:0}}>{c.label}</button>;
+}
+
 function WorkoutDisplay({w}) {
-  const type=getWorkoutType(w.type);
   const rows=[
     ["Distance",   w.distance        ? w.distance+" mi"          : null],
     ["Pace",       w.pace            ? w.pace+" /mi"             : null],
@@ -88,7 +99,7 @@ function WorkoutDisplay({w}) {
     : [];
   const allRows = [...rows, ...exerciseRows];
   return <div>
-    <div style={{marginBottom:12}}><Badge type={type}/></div>
+    <div style={{marginBottom:12}}><Badge type={w.type}/></div>
     {allRows.map(([lbl,val],i)=>(
       <div key={i} style={{display:"flex",gap:12,fontSize:14,padding:"7px 0",borderBottom:i<allRows.length-1?"0.5px solid #EEE":"none"}}>
         <span style={{color:"#888",minWidth:90,flexShrink:0}}>{lbl}</span>
@@ -135,7 +146,13 @@ function WorkoutEditor({w,onSave}) {
   const [v,setV]=useState({...w});
   const u=(k,x)=>setV(prev=>({...prev,[k]:x}));
   return <div>
-    <Field label="Type" value={v.type} onChange={x=>u("type",x)} placeholder="Easy run / Intervals / Lift / Rest..."/>
+    <div style={{marginBottom:10}}>
+      <label style={{fontSize:12,color:"#888",display:"block",marginBottom:4}}>Type</label>
+      <select value={v.type} onChange={e=>u("type",e.target.value)} style={{...inputSt, appearance:"none", WebkitAppearance:"none", backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E\")", backgroundRepeat:"no-repeat", backgroundPosition:"right 12px center", paddingRight:32}}>
+        <option value="">— select —</option>
+        {PLAN_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+      </select>
+    </div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
       <Field label="Distance (mi)"  value={v.distance}        onChange={x=>u("distance",x)}        type="number"/>
       <Field label="Pace (/mi)"     value={v.pace}            onChange={x=>u("pace",x)}            placeholder="mm:ss"/>
@@ -185,22 +202,37 @@ function JournalEditor({j,onSave}) {
   return <div><TArea value={v} onChange={setV} rows={5}/><button style={saveBtnSt} onClick={()=>onSave(v)}>Save</button></div>;
 }
 
-function OtherActivityEditor({a,onSave}) {
-  const [v,setV]=useState({...a});
-  const u=(k,x)=>setV(prev=>({...prev,[k]:x}));
+function OtherActivityEditor({activities, onSave}) {
+  const empty = () => ({description:"",duration:"",calories:""});
+  const [list, setList] = useState(activities.length ? activities.map(a=>({...a})) : [empty()]);
+  const upd = (i,k,x) => setList(prev => prev.map((a,idx) => idx===i ? {...a,[k]:x} : a));
+  const add = () => setList(prev => [...prev, empty()]);
+  const remove = i => {
+    const next = list.filter((_,idx) => idx!==i);
+    if (next.length === 0) { onSave([]); } else { setList(next); }
+  };
   return <div>
-    <Field label="Activity" value={v.description} onChange={x=>u("description",x)} placeholder="e.g. Recreational softball"/>
-    <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
-      <div style={{flex:1}}><Field label="Duration" value={v.duration} onChange={x=>u("duration",x)} placeholder="36" type="number"/></div>
-      <span style={{fontSize:13,color:"#888",paddingBottom:10,flexShrink:0}}>min</span>
-      <div style={{flex:1}}><Field label="Calories" value={v.calories} onChange={x=>u("calories",x)} placeholder="150" type="number"/></div>
-      <span style={{fontSize:13,color:"#888",paddingBottom:10,flexShrink:0}}>kcal</span>
+    {list.map((v,i) => <div key={i} style={{marginBottom:12,paddingBottom:12,borderBottom:i<list.length-1?"0.5px solid #EEE":"none"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+        {list.length>1 && <span style={{fontSize:12,color:"#AAA"}}>Activity {i+1}</span>}
+        <button onClick={()=>remove(i)} style={{background:"none",border:"none",color:"#C0392B",cursor:"pointer",fontSize:12,padding:0,marginLeft:"auto"}}>Remove</button>
+      </div>
+      <Field label="Activity" value={v.description} onChange={x=>upd(i,"description",x)} placeholder="e.g. Recreational softball"/>
+      <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
+        <div style={{flex:1}}><Field label="Duration" value={v.duration} onChange={x=>upd(i,"duration",x)} placeholder="36" type="number"/></div>
+        <span style={{fontSize:13,color:"#888",paddingBottom:10,flexShrink:0}}>min</span>
+        <div style={{flex:1}}><Field label="Calories" value={v.calories} onChange={x=>upd(i,"calories",x)} placeholder="150" type="number"/></div>
+        <span style={{fontSize:13,color:"#888",paddingBottom:10,flexShrink:0}}>kcal</span>
+      </div>
+    </div>)}
+    <div style={{display:"flex",gap:8,marginTop:4}}>
+      <button style={saveBtnSt} onClick={()=>onSave(list.filter(a=>a.description))}>Save</button>
+      <button style={{...saveBtnSt,background:"#F5F3EF",color:"#1A1A1A",border:"0.5px solid #D8D5CC"}} onClick={add}>+ Add</button>
     </div>
-    <button style={saveBtnSt} onClick={()=>onSave(v)}>Save</button>
   </div>;
 }
 
-export function LogTab({ date, setDate, summary, onSummaryChange }) {
+export function LogTab({ date, setDate, summary, onSummaryChange, plan, onPlanChange }) {
   const [entry, setEntry] = useState(emptyEntry());
   const [raw, setRaw]     = useState("");
   const [parsing, setParsing]   = useState(false);
@@ -209,10 +241,15 @@ export function LogTab({ date, setDate, summary, onSummaryChange }) {
   const [loading, setLoading] = useState(false);
   const [editSection, setEditSection] = useState(null);
   const [editError, setEditError] = useState("");
+  const [editPlan, setEditPlan] = useState(false);
+  const [showPaste, setShowPaste] = useState(false);
+  const [planMiles, setPlanMiles] = useState("");
+  const [planType, setPlanType] = useState("");
+  const [planStructure, setPlanStructure] = useState("");
   const openSection = (id) => { setEditSection(id); setEditError(""); };
 
   const loadEntry_ = useCallback(async d => {
-    setLoading(true); setEditSection(null); setEditError(""); setParseError("");
+    setLoading(true); setEditSection(null); setEditError(""); setParseError(""); setEditPlan(false);
     try {
       const e = await loadEntry(fmtKey(d));
       if (e) { setEntry(e); setRaw(""); }
@@ -234,20 +271,23 @@ export function LogTab({ date, setDate, summary, onSummaryChange }) {
   };
 
   const parseAndSave = async () => {
-    if (!raw.trim()) return;
+    if (!raw.trim()) return false;
     setParsing(true); setParseError("");
     try {
       const parsed = JSON.parse(raw);
       validateEntry(parsed);
       const fresh = { ...emptyEntry(), ...parsed, savedAt: new Date().toISOString() };
       fresh.workout.vdot = estimateVDOT(fresh.workout);
-      const planForDay = PLAN[fmtKey(date)];
-      fresh.workout_complete = planForDay
-        ? matchesPlan(fresh.workout.type, planForDay.workout)
-        : !!(fresh.workout.type && fresh.workout.type.toLowerCase() !== "rest");
+      const planForDay = (plan||{})[fmtKey(date)];
+      fresh.workout_status = planForDay
+        ? (matchesPlan(fresh.workout.type, planForDay.type) ? "done" : null)
+        : (fresh.workout.type && fresh.workout.type !== "Rest" ? "done" : null);
       await persist(fresh);
+      setParsing(false);
+      return true;
     } catch(e) { setParseError(e.message); }
     setParsing(false);
+    return false;
   };
 
   const saveEdits = async (section, data) => {
@@ -255,10 +295,10 @@ export function LogTab({ date, setDate, summary, onSummaryChange }) {
     updated[section] = data;
     if (section === "workout") {
       updated.workout.vdot = estimateVDOT(updated.workout);
-      const planForDay = PLAN[fmtKey(date)];
-      updated.workout_complete = planForDay
-        ? matchesPlan(updated.workout.type, planForDay.workout)
-        : !!(updated.workout.type && updated.workout.type.toLowerCase() !== "rest");
+      const planForDay = (plan||{})[fmtKey(date)];
+      updated.workout_status = planForDay
+        ? (matchesPlan(updated.workout.type, planForDay.type) ? "done" : null)
+        : (updated.workout.type && updated.workout.type !== "Rest" ? "done" : null);
     }
     try {
       validateEntry(updated);
@@ -271,7 +311,7 @@ export function LogTab({ date, setDate, summary, onSummaryChange }) {
 
   const nc = (() => { const i = parseFloat(entry.metrics.calIn), o = parseFloat(entry.metrics.calOut); if (isNaN(i) && isNaN(o)) return null; return (isNaN(i) ? 0 : i) - (isNaN(o) ? 0 : o); })();
   const hasData = !!entry.savedAt;
-  const todayPlan = PLAN[fmtKey(date)];
+  const todayPlan = (plan||{})[fmtKey(date)];
 
   return <div style={{padding:16,display:"flex",flexDirection:"column",gap:12}}>
     <div style={{background:"#fff",borderRadius:14,border:"0.5px solid #E5E2DB",padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -288,41 +328,90 @@ export function LogTab({ date, setDate, summary, onSummaryChange }) {
 
     {loading ? <div style={{textAlign:"center",padding:48,color:"#AAA",fontSize:14}}>Loading...</div> : <>
 
-      <div style={cardSt}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-          <span style={{fontSize:15,fontWeight:600,color:"#1A1A1A"}}>Today's snapshot</span>
-          {hasData && <span style={{fontSize:13,color:"#AAA7A0"}}>Saved {new Date(entry.savedAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>}
-        </div>
-        <textarea value={raw} onChange={e => setRaw(e.target.value)} placeholder="Paste your daily summary here..."
-          style={{width:"100%",minHeight:110,background:"#F5F3EF",border:"0.5px solid #E0DDD6",borderRadius:10,padding:"10px 14px",fontSize:14,color:"#1A1A1A",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",lineHeight:1.6,outline:"none"}}/>
-        {parseError && <div style={{fontSize:13,color:"#C0392B",marginTop:6}}>{parseError}</div>}
-        <button onClick={parseAndSave} disabled={parsing || !raw.trim()} style={{marginTop:10,width:"100%",padding:"10px",background:parsing||!raw.trim()?"#F5F3EF":"#fff",border:"0.5px solid #D8D5CC",borderRadius:10,fontSize:14,fontWeight:500,color:parsing||!raw.trim()?"#BBB":"#1A1A1A",cursor:parsing||!raw.trim()?"default":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
-          {parsing ? <><Spinner/>Parsing...</> : "✦ Parse & save"}
-        </button>
-      </div>
+      {showPaste
+        ? <div style={cardSt}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+              <span style={{fontSize:15,fontWeight:600,color:"#1A1A1A"}}>Paste snapshot</span>
+              <button onClick={()=>{setShowPaste(false);setRaw("");setParseError("");}} style={{background:"none",border:"none",color:"#AAA",cursor:"pointer",fontSize:18,lineHeight:1}}>✕</button>
+            </div>
+            <textarea value={raw} onChange={e => setRaw(e.target.value)} placeholder="Paste your daily summary here..." autoFocus
+              style={{width:"100%",minHeight:110,background:"#F5F3EF",border:"0.5px solid #E0DDD6",borderRadius:10,padding:"10px 14px",fontSize:14,color:"#1A1A1A",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",lineHeight:1.6,outline:"none"}}/>
+            {parseError && <div style={{fontSize:13,color:"#C0392B",marginTop:6}}>{parseError}</div>}
+            <button onClick={async()=>{const ok=await parseAndSave();if(ok){setShowPaste(false);setRaw("");}}} disabled={parsing || !raw.trim()} style={{marginTop:10,width:"100%",padding:"10px",background:parsing||!raw.trim()?"#F5F3EF":"#fff",border:"0.5px solid #D8D5CC",borderRadius:10,fontSize:14,fontWeight:500,color:parsing||!raw.trim()?"#BBB":"#1A1A1A",cursor:parsing||!raw.trim()?"default":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
+              {parsing ? <><Spinner/>Parsing...</> : "✦ Parse & save"}
+            </button>
+          </div>
+        : <button onClick={()=>setShowPaste(true)} style={{width:"100%",padding:"10px 14px",background:"#fff",border:"0.5px solid #D8D5CC",borderRadius:14,fontSize:14,fontWeight:500,color:"#1A1A1A",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+            <span>✦ Enter daily snapshot</span>
+            {hasData && <span style={{fontSize:12,color:"#AAA7A0",fontWeight:400}}>Last saved {new Date(entry.savedAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>}
+          </button>
+      }
 
       <div style={cardSt}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-          <span style={{fontSize:15,fontWeight:600,color:"#1A1A1A"}}>Today's workout</span>
-          <span style={{fontSize:13,color:"#AAA7A0"}}>from plan</span>
+          <span style={{fontSize:15,fontWeight:600,color:"#1A1A1A"}}>Planned workout</span>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:13,color:"#AAA7A0"}}>from plan</span>
+            {todayPlan && !editPlan && <button onClick={()=>{
+                setPlanMiles(todayPlan.distance || "");
+                const matchedType = PLAN_TYPES.find(t => t.toLowerCase() === (todayPlan.type||"").toLowerCase()) || PLAN_TYPES[0];
+                setPlanType(matchedType);
+                setPlanStructure(todayPlan.structure || "");
+                setEditPlan(true);
+              }} title="Edit plan" style={{background:"none",border:"none",cursor:"pointer",padding:"0 2px",color:"#AAA7A0",fontSize:14,lineHeight:1}}>✎</button>}
+          </div>
         </div>
-        {todayPlan ? <div>
-          <div style={{display:"flex",alignItems:"center",gap:10,paddingBottom:10,borderBottom:"0.5px solid #EEE",marginBottom:10}}>
-            <Badge type={getWorkoutType(todayPlan.workout)}/>
-            <span style={{fontSize:14,color:"#1A1A1A",flex:1}}>{fmtWorkout(todayPlan.workout)}</span>
-            <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:13,color:"#888",flexShrink:0}}>
-              <input type="checkbox" checked={!!entry.workout_complete} onChange={async e => {
-                const updated = { ...entry, workout_complete: e.target.checked, savedAt: entry.savedAt || new Date().toISOString() };
-                await persist(updated);
-              }} style={{width:16,height:16,cursor:"pointer",accentColor:"#1D9E75"}}/>
-              Done
-            </label>
-          </div>
-          <div style={{display:"flex",gap:8,fontSize:13}}>
-            <span style={{color:"#888"}}>Week</span>
-            <span style={{color:"#1A1A1A"}}>{todayPlan.label}</span>
-          </div>
-        </div> : <Empty text="No workout scheduled for this date."/>}
+        {editPlan
+          ? <div>
+              <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"flex-end"}}>
+                <div style={{flex:"0 0 80px"}}>
+                  <label style={{fontSize:12,color:"#888",display:"block",marginBottom:4}}>Miles</label>
+                  <input value={planMiles} onChange={e=>setPlanMiles(e.target.value)} type="number" placeholder="e.g. 5" style={{...inputSt}}/>
+                </div>
+                <div style={{flex:1}}>
+                  <label style={{fontSize:12,color:"#888",display:"block",marginBottom:4}}>Type</label>
+                  <select value={planType} onChange={e=>setPlanType(e.target.value)} style={{...inputSt, appearance:"none", WebkitAppearance:"none", backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E\")", backgroundRepeat:"no-repeat", backgroundPosition:"right 12px center", paddingRight:32}}>
+                    {PLAN_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{marginBottom:10}}>
+                <label style={{fontSize:12,color:"#888",display:"block",marginBottom:4}}>Structure <span style={{color:"#CCC",fontWeight:400}}>(intervals only, e.g. 6x400m)</span></label>
+                <input value={planStructure} onChange={e=>setPlanStructure(e.target.value)} placeholder="6x400m" style={{...inputSt}}/>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={async ()=>{
+                  const type = planType || "Rest";
+                  const key=fmtKey(date);
+                  const updated={...(plan||{}), [key]:{...(plan||{})[key], distance:planMiles, type, structure:planStructure}};
+                  onPlanChange(updated);
+                  await savePlanDay(key, {distance:planMiles, type, structure:planStructure});
+                  setEditPlan(false);
+                }} style={saveBtnSt}>Save</button>
+                <button onClick={()=>setEditPlan(false)} style={{...saveBtnSt,background:"#F5F3EF",color:"#888",border:"0.5px solid #D8D5CC"}}>Cancel</button>
+              </div>
+            </div>
+          : todayPlan ? <div>
+              <div style={{display:"flex",alignItems:"center",gap:10,paddingBottom:10,borderBottom:"0.5px solid #EEE",marginBottom:10}}>
+                <Badge type={todayPlan.type}/>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:14,color:"#1A1A1A"}}>
+                    {todayPlan.distance && <span>{todayPlan.distance} mi · </span>}
+                    <span>{todayPlan.type}</span>
+                    {todayPlan.structure && <span style={{color:"#888"}}> · {todayPlan.structure}</span>}
+                  </div>
+                </div>
+                {todayPlan.type !== "Rest" && <WorkoutStatusToggle status={entry.workout_status} onChange={async s => {
+                    const updated = { ...entry, workout_status: s, savedAt: entry.savedAt || new Date().toISOString() };
+                    await persist(updated);
+                  }}/>}
+              </div>
+              <div style={{display:"flex",gap:8,fontSize:13}}>
+                <span style={{color:"#888"}}>Week</span>
+                <span style={{color:"#1A1A1A"}}>{todayPlan.label}</span>
+              </div>
+            </div>
+          : <Empty text="No workout scheduled for this date."/>}
       </div>
 
       <EditCard title="Workout detail" id="workout" editSection={editSection} setEditSection={openSection} error={editError}
@@ -330,14 +419,18 @@ export function LogTab({ date, setDate, summary, onSummaryChange }) {
         editor={<WorkoutEditor w={entry.workout} onSave={w => saveEdits("workout", w)}/>}/>
 
       <EditCard title="Other activity" id="other_activity" editSection={editSection} setEditSection={openSection} error={editError}
-        display={entry.other_activity?.description
-          ? <div style={{display:"flex",gap:8,fontSize:14,flexWrap:"wrap"}}>
-              <span style={{color:"#1A1A1A"}}>{entry.other_activity.description}</span>
-              {entry.other_activity.duration && <span style={{color:"#AAA"}}>· {entry.other_activity.duration} min</span>}
-              {entry.other_activity.calories && <span style={{color:"#AAA"}}>· {entry.other_activity.calories} kcal</span>}
+        display={(entry.other_activity||[]).length && entry.other_activity.some(a=>a.description)
+          ? <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {entry.other_activity.filter(a=>a.description).map((a,i)=>
+                <div key={i} style={{display:"flex",gap:8,fontSize:14,flexWrap:"wrap"}}>
+                  <span style={{color:"#1A1A1A"}}>{a.description}</span>
+                  {a.duration && <span style={{color:"#AAA"}}>· {a.duration} min</span>}
+                  {a.calories && <span style={{color:"#AAA"}}>· {a.calories} kcal</span>}
+                </div>
+              )}
             </div>
           : <Empty text="No secondary activity logged"/>}
-        editor={<OtherActivityEditor a={entry.other_activity || {description:"",duration:"",calories:""}} onSave={a => saveEdits("other_activity", a)}/>}/>
+        editor={<OtherActivityEditor activities={entry.other_activity||[]} onSave={a => saveEdits("other_activity", a)}/>}/>
 
       <EditCard title="Metrics" right="parsed from snapshot" id="metrics" editSection={editSection} setEditSection={openSection} error={editError}
         display={<MetricsDisplay m={entry.metrics} nc={nc}/>}

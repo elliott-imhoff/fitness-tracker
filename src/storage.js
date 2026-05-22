@@ -1,12 +1,10 @@
-import { PLAN } from "./plan.js";
-
 const BASE = "http://localhost:3001";
 
 export function entryToSummary(e) {
   if (!e || !e.savedAt) return null;
   return {
     savedAt: e.savedAt,
-    workout_complete: !!e.workout_complete,
+    workout_status: e.workout_status || null,
     weight:    e.metrics ? e.metrics.weight    : "",
     sleep:     e.metrics ? e.metrics.sleep     : "",
     calIn:     e.metrics ? e.metrics.calIn     : "",
@@ -50,8 +48,23 @@ export async function saveSummary(s) {
   });
 }
 
-export async function syncSummaryFromEntries() {
-  const keys = Object.keys(PLAN);
+export async function loadPlan() {
+  try {
+    const res = await fetch(`${BASE}/plan`);
+    return res.ok ? await res.json() : {};
+  } catch { return {}; }
+}
+
+export async function savePlanDay(date, dayPlan) {
+  await fetch(`${BASE}/plan/${date}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dayPlan),
+  });
+}
+
+export async function syncSummaryFromEntries(plan) {
+  const keys = Object.keys(plan || PLAN);
   const result = {};
   await Promise.all(keys.map(async key => {
     const entry = await loadEntry(key);

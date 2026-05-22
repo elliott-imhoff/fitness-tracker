@@ -29,8 +29,6 @@ data/
     2026-05-04.json        # One file per logged day
     ...
 server.js                  # Express server — GET/PUT /entries/:date, GET/PUT /summary
-scripts/
-  migrate-export.js        # One-time migration from old export format
 ```
 
 `data/` is gitignored — your logs stay local.

@@ -1,4 +1,4 @@
-import { TYPE_STYLE, TYPE_LABEL } from "../plan.js";
+import { TYPE_STYLE } from "../plan.js";
 
 export const cardSt   = { background:"#fff", borderRadius:14, border:"0.5px solid #E5E2DB", padding:"16px 18px" };
 export const inputSt  = { fontSize:14, padding:"8px 12px", borderRadius:10, border:"0.5px solid #D8D5CC", background:"#F5F3EF", color:"#1A1A1A", width:"100%", boxSizing:"border-box", fontFamily:"inherit", outline:"none" };
@@ -13,8 +13,8 @@ export function Empty({text}) {
 }
 
 export function Badge({type}) {
-  const st=TYPE_STYLE[type]||TYPE_STYLE.rest;
-  return <span style={{fontSize:11,padding:"3px 9px",borderRadius:20,fontWeight:500,background:st.bg,color:st.color,whiteSpace:"nowrap"}}>{TYPE_LABEL[type]||"Run"}</span>;
+  const st=TYPE_STYLE[type]||TYPE_STYLE.Easy;
+  return <span style={{fontSize:11,padding:"3px 9px",borderRadius:20,fontWeight:500,background:st.bg,color:st.color,whiteSpace:"nowrap"}}>{type||"Rest"}</span>;
 }
 
 export function Metric({label,value,sub,hl}) {

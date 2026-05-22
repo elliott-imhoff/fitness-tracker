@@ -1,8 +1,5 @@
 import Ajv from "ajv";
-
-export const WORKOUT_TYPES = [
-  "Easy run", "Long run", "Tempo run", "Intervals", "Lift", "Race", "Rest",
-];
+import { PLAN_TYPES } from "./plan.js";
 
 // Full JSON schema for a daily log entry.
 // This is the single source of truth for both validation and prompt generation.
@@ -16,7 +13,7 @@ export const ENTRY_SCHEMA = {
       required: ["type"],
       description: "Primary workout for the day",
       properties: {
-        type:             { type: "string", enum: [...WORKOUT_TYPES, ""], description: "Required. One of the allowed values, or empty string if no workout logged." },
+        type:             { type: "string", enum: [...PLAN_TYPES, ""], description: "Required. One of the allowed values, or empty string if no workout logged." },
         distance:         { type: "string", pattern: "^(\\d+(\\.\\d+)?)?$", description: "Miles, runs only. E.g. \"6.2\"" },
         pace:             { type: "string", pattern: "^(\\d+:\\d{2})?$", description: "mm:ss per mile. Steady runs only — omit for Intervals." },
         hr:               { type: "string", pattern: "^(\\d+)?$",   description: "Average heart rate bpm" },
@@ -39,14 +36,17 @@ export const ENTRY_SCHEMA = {
     },
 
     other_activity: {
-      type: "object",
-      description: "Any secondary activity (walk, bike, etc.) — omit entire object if none",
-      properties: {
-        description: { type: "string", description: "Activity name" },
-        duration:    { type: "string", pattern: "^(\\d+)?$", description: "Minutes" },
-        calories:    { type: "string", pattern: "^(\\d+)?$", description: "kcal" },
+      type: "array",
+      description: "Secondary activities (walk, bike, recreational sport, etc.)",
+      items: {
+        type: "object",
+        properties: {
+          description: { type: "string", description: "Activity name" },
+          duration:    { type: "string", pattern: "^(\\d+)?$", description: "Minutes" },
+          calories:    { type: "string", pattern: "^(\\d+)?$", description: "kcal" },
+        },
+        additionalProperties: false,
       },
-      additionalProperties: false,
     },
 
     metrics: {
@@ -84,6 +84,7 @@ export const ENTRY_SCHEMA = {
       additionalProperties: false,
     },
 
+    workout_status: { type:["string","null"], enum:["done","skipped",null], description:"done = completed, skipped = explicitly skipped, null = not entered" },
     energy:      { type: "string", description: "Free-form: mood, mental state, motivation, stress, energy levels" },
     body:        { type: "string", description: "Physical observations: soreness, tightness, injuries" },
     sleep_notes: { type: "string", description: "Sleep quality, disturbances, anything notable" },
