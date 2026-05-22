@@ -232,7 +232,7 @@ function OtherActivityEditor({activities, onSave}) {
   </div>;
 }
 
-export function LogTab({ date, setDate, summary, onSummaryChange, plan, onPlanChange }) {
+export function LogTab({date, setDate, summary, onSummaryChange, plan, onPlanChange, viewMode="full"}) {
   const [entry, setEntry] = useState(emptyEntry());
   const [raw, setRaw]     = useState("");
   const [parsing, setParsing]   = useState(false);
@@ -417,6 +417,14 @@ export function LogTab({ date, setDate, summary, onSummaryChange, plan, onPlanCh
         display={hasData && entry.workout.type ? <WorkoutDisplay w={entry.workout}/> : <Empty text="No workout logged yet — paste your summary above"/>}
         editor={<WorkoutEditor w={entry.workout} onSave={w => saveEdits("workout", w)}/>}/>
 
+      <EditCard title="Metrics" id="metrics" editSection={editSection} setEditSection={openSection} error={editError}
+        display={<MetricsDisplay m={entry.metrics} nc={nc}/>}
+        editor={<MetricsEditor m={entry.metrics} onSave={m => saveEdits("metrics", m)}/>}/>
+
+      <EditCard title="Food log" id="food" editSection={editSection} setEditSection={openSection} error={editError}
+        display={hasData && (entry.food.breakfast || entry.food.lunch || entry.food.dinner || entry.food.snacks) ? <FoodDisplay f={entry.food}/> : <Empty text="No food logged yet"/>}
+        editor={<FoodEditor f={entry.food} onSave={f => saveEdits("food", f)}/>}/>
+
       <EditCard title="Other activity" id="other_activity" editSection={editSection} setEditSection={openSection} error={editError}
         display={(entry.other_activity||[]).length && entry.other_activity.some(a=>a.description)
           ? <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -431,29 +439,21 @@ export function LogTab({ date, setDate, summary, onSummaryChange, plan, onPlanCh
           : <Empty text="No secondary activity logged"/>}
         editor={<OtherActivityEditor activities={entry.other_activity||[]} onSave={a => saveEdits("other_activity", a)}/>}/>
 
-      <EditCard title="Metrics" right="parsed from snapshot" id="metrics" editSection={editSection} setEditSection={openSection} error={editError}
-        display={<MetricsDisplay m={entry.metrics} nc={nc}/>}
-        editor={<MetricsEditor m={entry.metrics} onSave={m => saveEdits("metrics", m)}/>}/>
-
-      <EditCard title="Food log" id="food" editSection={editSection} setEditSection={openSection} error={editError}
-        display={hasData && (entry.food.breakfast || entry.food.lunch || entry.food.dinner || entry.food.snacks) ? <FoodDisplay f={entry.food}/> : <Empty text="No food logged yet"/>}
-        editor={<FoodEditor f={entry.food} onSave={f => saveEdits("food", f)}/>}/>
-
-      <EditCard title="Sleep notes" id="sleep_notes" editSection={editSection} setEditSection={openSection} error={editError}
+      {viewMode !== "minimal" && <EditCard title="Sleep notes" id="sleep_notes" editSection={editSection} setEditSection={openSection} error={editError}
         display={entry.sleep_notes ? <p style={{fontSize:14,color:"#555",lineHeight:1.7,margin:0}}>{entry.sleep_notes}</p> : <Empty text="No sleep notes logged"/>}
-        editor={<JournalEditor j={entry.sleep_notes} onSave={j => saveEdits("sleep_notes", j)}/>}/>
+        editor={<JournalEditor j={entry.sleep_notes} onSave={j => saveEdits("sleep_notes", j)}/>}/> }
 
-      <EditCard title="Energy" id="energy" editSection={editSection} setEditSection={openSection} error={editError}
+      {viewMode !== "minimal" && <EditCard title="Energy" id="energy" editSection={editSection} setEditSection={openSection} error={editError}
         display={entry.energy ? <p style={{fontSize:14,color:"#555",lineHeight:1.7,margin:0}}>{entry.energy}</p> : <Empty text="No energy notes logged"/>}
-        editor={<JournalEditor j={entry.energy} onSave={j => saveEdits("energy", j)}/>}/>
+        editor={<JournalEditor j={entry.energy} onSave={j => saveEdits("energy", j)}/>}/> }
 
-      <EditCard title="Body" id="body" editSection={editSection} setEditSection={openSection} error={editError}
+      {viewMode !== "minimal" && <EditCard title="Body" id="body" editSection={editSection} setEditSection={openSection} error={editError}
         display={entry.body ? <p style={{fontSize:14,color:"#555",lineHeight:1.7,margin:0}}>{entry.body}</p> : <Empty text="No body notes logged"/>}
-        editor={<JournalEditor j={entry.body} onSave={j => saveEdits("body", j)}/>}/>
+        editor={<JournalEditor j={entry.body} onSave={j => saveEdits("body", j)}/>}/> }
 
-      <EditCard title="Journal" id="journal" editSection={editSection} setEditSection={openSection} error={editError}
+      {viewMode === "full" && <EditCard title="Journal" id="journal" editSection={editSection} setEditSection={openSection} error={editError}
         display={entry.journal ? <p style={{fontSize:14,color:"#555",lineHeight:1.75,margin:0}}>{entry.journal}</p> : <Empty text="No journal entry yet"/>}
-        editor={<JournalEditor j={entry.journal} onSave={j => saveEdits("journal", j)}/>}/>
+        editor={<JournalEditor j={entry.journal} onSave={j => saveEdits("journal", j)}/>}/> }
     </>}
   </div>;
 }

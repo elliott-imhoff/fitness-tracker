@@ -11,6 +11,7 @@ export default function AthleteLog() {
   const [summary, setSummary] = useState({});
   const [plan, setPlan] = useState({});
   const [syncing, setSyncing] = useState(false);
+  const [viewMode, setViewMode] = useState("full");
 
   useEffect(() => {
     loadSummary().then(s => setSummary(s));
@@ -38,11 +39,11 @@ export default function AthleteLog() {
       ))}
     </div>
 
-    {tab === "log" && <LogTab date={date} setDate={setDate} summary={summary} onSummaryChange={setSummary} plan={plan} onPlanChange={setPlan}/>}
+    {tab === "log" && <LogTab date={date} setDate={setDate} summary={summary} onSummaryChange={setSummary} plan={plan} onPlanChange={setPlan} viewMode={viewMode}/>}
 
     {tab === "plan" && <PlanTab onViewLog={d => { setDate(d); setTab("log"); }} summary={summary} plan={plan}/>}
     {tab === "dashboard" && <DashboardTab summary={summary}/>}
-    {tab === "tools" && <ToolsTab onSync={handleSync} syncing={syncing} plan={plan}/>}
+    {tab === "tools" && <ToolsTab onSync={handleSync} syncing={syncing} plan={plan} viewMode={viewMode} setViewMode={setViewMode}/>}
 
     <style>{"@keyframes spin{to{transform:rotate(360deg)}} textarea:focus,input:focus{outline:none;border-color:#B8B5AE!important;}"}</style>
   </div>;

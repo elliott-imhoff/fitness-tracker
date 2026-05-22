@@ -21,7 +21,7 @@ export function PlanTab({onViewLog, summary, plan}) {
     if (calOpen) setCalMonth(new Date(weekStart.getFullYear(), weekStart.getMonth(), 1));
   }, [weekStart, calOpen]);
 
-  const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const weekDays = Array.from({length:7}, (_,i)=>addDays(weekStart,i));
 
   const isLogged   = key => !!(planEntries[key]?.savedAt);
@@ -110,7 +110,7 @@ export function PlanTab({onViewLog, summary, plan}) {
           {calOpen
             ? <div style={{display:"flex",alignItems:"center",gap:2}}>
                 <button onClick={()=>setCalMonth(new Date(calMonth.getFullYear(),calMonth.getMonth()-1,1))} style={{background:"none",border:"none",color:"#888",cursor:"pointer",fontSize:18,padding:"0 4px"}}>&#8249;</button>
-                <span style={{fontSize:13,color:"#666",fontWeight:500}}>{monthNames[calMonth.getMonth()]} {calMonth.getFullYear()}</span>
+                <span style={{fontSize:13,color:"#666",fontWeight:500,width:68,textAlign:"center",display:"inline-block"}}>{monthNames[calMonth.getMonth()]} {calMonth.getFullYear()}</span>
                 <button onClick={()=>setCalMonth(new Date(calMonth.getFullYear(),calMonth.getMonth()+1,1))} style={{background:"none",border:"none",color:"#888",cursor:"pointer",fontSize:18,padding:"0 4px"}}>&#8250;</button>
               </div>
             : <span style={{fontSize:12,color:"#AAA7A0"}}>{fmtDisplay(weekStart).split(", ")[1]} – {fmtDisplay(addDays(weekStart,6)).split(", ")[1]}</span>

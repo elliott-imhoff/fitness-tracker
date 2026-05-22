@@ -84,7 +84,7 @@ function buildTrackingPrompt(plan) {
   ].join("\n");
 }
 
-export function ToolsTab({onSync, syncing, plan}) {
+export function ToolsTab({onSync, syncing, plan, viewMode="full", setViewMode}) {
   const P = plan || {};
   const [promptText, setPromptText] = useState("");
   const [copied, setCopied] = useState(false);
@@ -127,5 +127,13 @@ export function ToolsTab({onSync, syncing, plan}) {
             style={{width:"100%",minHeight:500,background:"#F5F3EF",border:"0.5px solid #E0DDD6",borderRadius:10,padding:"12px 14px",fontSize:13,color:"#1A1A1A",fontFamily:"monospace",resize:"vertical",boxSizing:"border-box",lineHeight:1.7,outline:"none"}}/>
         </div>
     }
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 2px"}}>
+      <span style={{fontSize:11,color:"#C0BDB7"}}>Sections</span>
+      <div style={{display:"flex",gap:4}}>
+        {[["full","All"],["minimal","Compact"]].map(([mode,label])=>(
+          <button key={mode} onClick={()=>setViewMode(mode)} style={{fontSize:11,padding:"2px 9px",borderRadius:8,border:"0.5px solid",borderColor:viewMode===mode?"#AAA7A0":"#E0DDD6",background:viewMode===mode?"#E8E5E0":"transparent",color:viewMode===mode?"#555":"#C0BDB7",cursor:"pointer"}}>{label}</button>
+        ))}
+      </div>
+    </div>
   </div>;
 }
