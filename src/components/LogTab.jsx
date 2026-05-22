@@ -351,7 +351,6 @@ export function LogTab({ date, setDate, summary, onSummaryChange, plan, onPlanCh
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
           <span style={{fontSize:15,fontWeight:600,color:"#1A1A1A"}}>Planned workout</span>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:13,color:"#AAA7A0"}}>from plan</span>
             {todayPlan && !editPlan && <button onClick={()=>{
                 setPlanMiles(todayPlan.distance || "");
                 const matchedType = PLAN_TYPES.find(t => t.toLowerCase() === (todayPlan.type||"").toLowerCase()) || PLAN_TYPES[0];

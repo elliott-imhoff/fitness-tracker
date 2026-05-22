@@ -46,7 +46,7 @@ export function fmtWorkout(desc) {
 }
 
 export function dotLabel(desc) {
-  if (!desc) return ["Rest",""];
+  if (!desc) return ["",""];
   const d = desc.toLowerCase();
   if (d==="rest") return ["Rest",""];
   if (d.includes("race")) return ["RACE",""];

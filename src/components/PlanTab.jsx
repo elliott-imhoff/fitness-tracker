@@ -16,6 +16,10 @@ export function PlanTab({onViewLog, summary, plan}) {
   const today = new Date();
 
   useEffect(() => { setPlanEntries(summary || {}); }, [summary]);
+  // keep month view in sync when week navigation crosses a month boundary
+  useEffect(() => {
+    if (calOpen) setCalMonth(new Date(weekStart.getFullYear(), weekStart.getMonth(), 1));
+  }, [weekStart, calOpen]);
 
   const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
   const weekDays = Array.from({length:7}, (_,i)=>addDays(weekStart,i));
@@ -35,11 +39,11 @@ export function PlanTab({onViewLog, summary, plan}) {
     const skipped = isSkipped(key);
     const logged = isLogged(key);
     const tod = isToday(day);
+    const [l1,l2] = dotLabel(fmtPlanWorkout(dayPlan));
     const past = day < today && !isToday(day);
     const missed = past && dayPlan && !logged && type!=="Rest";
     const missedLogged = past && logged && !done && !skipped && type!=="Rest";
-    const [l1,l2] = dotLabel(fmtPlanWorkout(dayPlan));
-    return <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,cursor:"pointer",flex:1,borderRadius:8,background:tod?"#FEF6E8":inMonth?"#FAFAF8":"transparent",padding:"2px 0"}} onClick={()=>onViewLog(day)}>
+    return <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,cursor:"pointer",flex:1,background:tod?"#FEF6E8":inMonth?"#FAFAF8":"transparent",padding:"4px 0"}} onClick={()=>onViewLog(day)}>
       <span style={{fontSize:10,color:tod?"#BA7517":"#AAA",height:14}}>{DOWS[idx]}</span>
       <div style={{position:"relative",width:32,height:32,flexShrink:0}}>
         <div style={{width:32,height:32,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:500,
@@ -95,44 +99,52 @@ export function PlanTab({onViewLog, summary, plan}) {
 
     <div style={cardSt}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-        <span style={{fontSize:15,fontWeight:600,color:"#1A1A1A"}}>
-          {calOpen ? monthNames[calMonth.getMonth()]+" "+calMonth.getFullYear() : (weekLabel||"Training plan")}
-        </span>
-        {calOpen
-          ? <div style={{display:"flex",gap:4}}>
-              <button onClick={()=>setCalMonth(new Date(calMonth.getFullYear(),calMonth.getMonth()-1,1))} style={{background:"none",border:"none",color:"#888",cursor:"pointer",fontSize:18,padding:"0 4px"}}>&#8249;</button>
-              <button onClick={()=>setCalMonth(new Date(calMonth.getFullYear(),calMonth.getMonth()+1,1))} style={{background:"none",border:"none",color:"#888",cursor:"pointer",fontSize:18,padding:"0 4px"}}>&#8250;</button>
-            </div>
-          : <span style={{fontSize:12,color:"#AAA7A0"}}>{fmtDisplay(weekStart).split(", ")[1]} – {fmtDisplay(addDays(weekStart,6)).split(", ")[1]}</span>
-        }
+        <div style={{display:"flex",alignItems:"center",gap:2}}>
+          <button onClick={()=>setWeekStart(addDays(weekStart,-7))} style={{background:"none",border:"none",color:"#888",cursor:"pointer",fontSize:20,padding:"0 4px",lineHeight:1}}>&#8249;</button>
+          <span style={{fontSize:15,fontWeight:600,color:"#1A1A1A"}}>{weekLabel||"Training plan"}</span>
+          <button onClick={()=>setWeekStart(addDays(weekStart,7))} style={{background:"none",border:"none",color:"#888",cursor:"pointer",fontSize:20,padding:"0 4px",lineHeight:1}}>&#8250;</button>
+          {fmtKey(weekStart)!==fmtKey(startOfWeek(today)) &&
+            <button onClick={()=>setWeekStart(startOfWeek(today))} style={{marginLeft:4,background:"#ECEAE5",border:"none",color:"#555",cursor:"pointer",fontSize:11,padding:"2px 8px",borderRadius:8,fontWeight:500,lineHeight:1.4}}>Back to current week</button>}
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          {calOpen
+            ? <div style={{display:"flex",alignItems:"center",gap:2}}>
+                <button onClick={()=>setCalMonth(new Date(calMonth.getFullYear(),calMonth.getMonth()-1,1))} style={{background:"none",border:"none",color:"#888",cursor:"pointer",fontSize:18,padding:"0 4px"}}>&#8249;</button>
+                <span style={{fontSize:13,color:"#666",fontWeight:500}}>{monthNames[calMonth.getMonth()]} {calMonth.getFullYear()}</span>
+                <button onClick={()=>setCalMonth(new Date(calMonth.getFullYear(),calMonth.getMonth()+1,1))} style={{background:"none",border:"none",color:"#888",cursor:"pointer",fontSize:18,padding:"0 4px"}}>&#8250;</button>
+              </div>
+            : <span style={{fontSize:12,color:"#AAA7A0"}}>{fmtDisplay(weekStart).split(", ")[1]} – {fmtDisplay(addDays(weekStart,6)).split(", ")[1]}</span>
+          }
+          <button onClick={()=>setCalOpen(!calOpen)} style={{background:"#ECEAE5",border:"none",color:"#1A1A1A",cursor:"pointer",fontSize:17,padding:"2px 8px",lineHeight:1,borderRadius:8,fontWeight:700}}>{calOpen?"▴":"▾"}</button>
+        </div>
       </div>
 
-      {!calOpen && <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:14}}>
-        <button onClick={()=>setWeekStart(addDays(weekStart,-7))} style={{background:"none",border:"none",color:"#888",cursor:"pointer",fontSize:20,padding:"0 2px",marginTop:22}}>&#8249;</button>
+      {!calOpen && <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:4,borderRadius:10,border:"1px solid #C8C4BC",overflow:"hidden"}}>
         <div style={{display:"flex",flex:1,alignItems:"flex-start",justifyContent:"space-between"}}>
-          {weekDays.map((day,idx)=><DotRow key={fmtKey(day)} day={day} idx={idx} inMonth={false}/>)}
+          {weekDays.map((day,idx)=><DotRow key={fmtKey(day)} day={day} idx={idx} inMonth={true}/>)}
         </div>
-        <button onClick={()=>setWeekStart(addDays(weekStart,7))} style={{background:"none",border:"none",color:"#888",cursor:"pointer",fontSize:20,padding:"0 2px",marginTop:22}}>&#8250;</button>
       </div>}
 
-      {calOpen && <div style={{marginBottom:14}}>
+      {calOpen && <div style={{marginBottom:4}}>
         {(()=>{
           const first=new Date(calMonth.getFullYear(),calMonth.getMonth(),1);
           const lastDay=new Date(calMonth.getFullYear(),calMonth.getMonth()+1,0);
           let w=startOfWeek(first);
           const calWeeks=[];
           while(w<=lastDay){calWeeks.push(Array.from({length:7},(_,i)=>addDays(w,i)));w=addDays(w,7);}
-          return calWeeks.map((days,wi)=>(
-            <div key={wi} style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:4,paddingBottom:4,borderBottom:wi<calWeeks.length-1?"0.5px solid #F0EDE8":"none"}}>
-              {days.map((day,idx)=><DotRow key={fmtKey(day)} day={day} idx={idx} inMonth={day.getMonth()===calMonth.getMonth()}/>)}
-            </div>
-          ));
+          return calWeeks.map((days,wi)=>{
+            const isSelectedWeek = fmtKey(days[0])===fmtKey(weekStart);
+            return (
+              <div key={wi} onClick={()=>setWeekStart(days[0])} style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:4,cursor:"pointer",
+                borderRadius:10,border:isSelectedWeek?"1px solid #C8C4BC":"1px solid transparent",
+                background:"transparent",overflow:"hidden",
+                boxShadow:!isSelectedWeek&&wi<calWeeks.length-1?"inset 0 -0.5px 0 #F0EDE8":"none"}}>
+                {days.map((day,idx)=><DotRow key={fmtKey(day)} day={day} idx={idx} inMonth={day.getMonth()===calMonth.getMonth()}/>)}
+              </div>
+            );
+          });
         })()}
       </div>}
-
-      <button onClick={()=>setCalOpen(!calOpen)} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,width:"100%",padding:"8px",background:"#F5F3EF",border:"0.5px solid #E5E2DB",borderRadius:10,fontSize:13,color:"#666",cursor:"pointer"}}>
-        View {calOpen?"less":"full training calendar"} {calOpen?"▴":"▾"}
-      </button>
     </div>
 
     <div style={cardSt}>

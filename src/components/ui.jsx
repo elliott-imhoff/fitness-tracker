@@ -45,8 +45,8 @@ export function EditCard({title,right,id,editSection,setEditSection,display,edit
       <span style={{fontSize:15,fontWeight:600,color:"#1A1A1A"}}>{title}</span>
       <div style={{display:"flex",alignItems:"center",gap:10}}>
         {right&&<span style={{fontSize:13,color:"#AAA7A0"}}>{right}</span>}
-        <button onClick={()=>setEditSection(editSection===id?null:id)} style={{fontSize:13,color:"#AAA7A0",background:"none",border:"none",cursor:"pointer",padding:0}}>
-          {editSection===id?"Done":"Edit"}
+        <button onClick={()=>setEditSection(editSection===id?null:id)} style={{fontSize:editSection===id?12:15,color:"#AAA7A0",background:"none",border:"none",cursor:"pointer",padding:"0 2px",lineHeight:1}}>
+          {editSection===id?"✓":"✎"}
         </button>
       </div>
     </div>
