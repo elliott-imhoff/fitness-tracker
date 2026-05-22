@@ -8,7 +8,7 @@ export const WORKOUT_TYPES = [
 // This is the single source of truth for both validation and prompt generation.
 export const ENTRY_SCHEMA = {
   type: "object",
-  required: ["workout", "other_activity", "metrics", "food"],
+  required: [],
   additionalProperties: true,
   properties: {
     workout: {

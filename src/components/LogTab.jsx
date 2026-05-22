@@ -215,7 +215,7 @@ export function LogTab({ date, setDate, summary, onSummaryChange }) {
     setLoading(true); setEditSection(null); setEditError(""); setParseError("");
     try {
       const e = await loadEntry(fmtKey(d));
-      if (e) { setEntry(e); setRaw(e.raw || ""); }
+      if (e) { setEntry(e); setRaw(""); }
       else { setEntry(emptyEntry()); setRaw(""); }
     } catch { setEntry(emptyEntry()); setRaw(""); }
     setLoading(false);
@@ -239,7 +239,7 @@ export function LogTab({ date, setDate, summary, onSummaryChange }) {
     try {
       const parsed = JSON.parse(raw);
       validateEntry(parsed);
-      const fresh = { ...emptyEntry(), ...parsed, raw, savedAt: new Date().toISOString() };
+      const fresh = { ...emptyEntry(), ...parsed, savedAt: new Date().toISOString() };
       fresh.workout.vdot = estimateVDOT(fresh.workout);
       const planForDay = PLAN[fmtKey(date)];
       fresh.workout_complete = planForDay

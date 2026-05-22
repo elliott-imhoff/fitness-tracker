@@ -1,7 +1,7 @@
 import { fmtKey } from "./utils.js";
 
 export const emptyEntry = () => ({
-  raw:"", savedAt:null, workout_complete:false,
+  savedAt:null, workout_complete:false,
   workout:{ type:"", distance:"", pace:"", hr:"", hr_peak:"", vdot:"", rep_distance_m:"", rep_count:"", rep_times:"", structure:"", duration:"", calories_burned:"", exercises:[], notes:"" },
   other_activity:{ description:"", duration:"", calories:"" },
   metrics:{ calIn:"", calOut:"", protein:"", hydration:"", sleep:"", weight:"" },
