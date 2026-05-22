@@ -51,8 +51,27 @@ export async function saveSummary(s) {
 export async function loadPlan() {
   try {
     const res = await fetch(`${BASE}/plan`);
+    if (!res.ok) return { meta: {}, days: {} };
+    const raw = await res.json();
+    const { goalDate, goalName, goal, startDate: rawStartDate, ...days } = raw;
+    const derivedStart = Object.keys(days).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort()[0] || rawStartDate || "";
+    return { meta: { goalDate: goalDate||"", goalName: goalName||"", goal: goal||"", startDate: derivedStart }, days };
+  } catch { return { meta: {}, days: {} }; }
+}
+
+export async function loadProfile() {
+  try {
+    const res = await fetch(`${BASE}/profile`);
     return res.ok ? await res.json() : {};
   } catch { return {}; }
+}
+
+export async function saveProfile(p) {
+  await fetch(`${BASE}/profile`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(p),
+  });
 }
 
 export async function savePlanDay(date, dayPlan) {

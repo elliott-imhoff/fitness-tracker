@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { cardSt } from "./ui.jsx";
-
-const MO = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+import { MONTHS } from "../utils.js";
 
 function dateLbl(ds) {
   const d = new Date(ds + "T00:00:00");
   const today = new Date(); today.setHours(0,0,0,0);
-  return d.getTime() === today.getTime() ? "Today" : MO[d.getMonth()] + " " + d.getDate();
+  return d.getTime() === today.getTime() ? "Today" : MONTHS[d.getMonth()] + " " + d.getDate();
 }
 
 function Tooltip({ x, y, text, W }) {
@@ -107,7 +106,7 @@ function BarChart({ data, goalLine, barColor, negColor, showDow }) {
   </svg>;
 }
 
-export function DashboardTab({ summary }) {
+export function DashboardTab({ summary, profile={} }) {
   const [wWindow, setWWindow] = useState("7d");
   const [vWindow, setVWindow] = useState("7d");
   const [vdotFilter, setVdotFilter] = useState("aerobic");
@@ -175,8 +174,6 @@ export function DashboardTab({ summary }) {
   const vdotRaw    = allEntries.filter(e=>e.vdot!==""&&e.vdot!=null&&!isNaN(parseFloat(e.vdot))&&VDOT_TYPE_GROUPS[vdotFilter](e));
   const vdotData   = getField(vdotRaw,"vdot",vN+30).slice(-vN);
   const vdotAvg    = rollingAvg(vdotData,vN);
-  const vdotTarget = vdotFilter==="interval" ? 53.5 : 46.5;
-  const vdotTargetLabel = vdotFilter==="interval" ? "5:30mi (53.5)" : "3:30 (46.5)";
 
   const calDaily   = allEntries.filter(e=>e.calIn!==""&&e.calIn!=null).map(e=>({ date:e.dateKey, val:(parseFloat(e.calIn)||0)-(parseFloat(e.calOut)||0) }));
   const proDaily   = allEntries.filter(e=>e.protein!==""&&e.protein!=null&&parseFloat(e.protein)>0).map(e=>({ date:e.dateKey, val:parseFloat(e.protein) }));
@@ -237,9 +234,10 @@ export function DashboardTab({ summary }) {
       <div style={{display:"flex",gap:14,fontSize:11,color:"#888",marginBottom:4}}>
         <span><svg width={18} height={8} style={{verticalAlign:"middle",marginRight:3}}><line x1={0} y1={4} x2={18} y2={4} stroke={VDOT_COLORS[vdotFilter]} strokeWidth={2}/><circle cx={9} cy={4} r={2.5} fill={VDOT_COLORS[vdotFilter]}/></svg>Per run</span>
         <span><svg width={18} height={8} style={{verticalAlign:"middle",marginRight:3}}><line x1={0} y1={4} x2={18} y2={4} stroke="#1D7A55" strokeWidth={2.5}/></svg>{vWindow} avg</span>
-        <span><svg width={18} height={8} style={{verticalAlign:"middle",marginRight:3}}><line x1={0} y1={4} x2={18} y2={4} stroke="#E8A857" strokeWidth={1.5} strokeDasharray="4 2"/></svg>{vdotTargetLabel}</span>
       </div>
-      <LineChart data={vdotData} avg={vdotAvg} targetLine={vdotTarget} targetLabel={vdotFilter==="interval"?"53.5":"46.5"} dotColor={VDOT_COLORS[vdotFilter]} lineColor="#1D7A55"/>
+      <LineChart data={vdotData} avg={vdotAvg} dotColor={VDOT_COLORS[vdotFilter]} lineColor="#1D7A55"
+        targetLine={(vdotFilter==="interval") ? (profile.vdotShort??null) : (profile.vdotLong??null)}
+        targetLabel={(vdotFilter==="interval") ? (profile.vdotShort?`goal ${profile.vdotShort}`:undefined) : (profile.vdotLong?`goal ${profile.vdotLong}`:undefined)}/>
       {todayV!=null&&<div style={{fontSize:13,color:"#888",marginTop:6}}>
         Today <strong style={{color:"#1A1A1A"}}>{fmtN(todayV)}</strong>
         {avgV!=null&&<span> &nbsp;7d avg <strong style={{color:"#1A1A1A"}}>{fmtN(avgV)}</strong></span>}
@@ -265,8 +263,8 @@ export function DashboardTab({ summary }) {
     </div>
 
     {/* Protein & Sleep */}
-    {[{label:"Protein",data:proteinData,color:"#8B85D4",goal:180,unit:"g",today:todayPro,avg:avgPro,dp:0},
-      {label:"Sleep",data:sleepData,color:"#7DBFA0",goal:7,unit:" hr",today:todaySleep,avg:avgSleep,dp:1}
+    {[{label:"Protein",data:proteinData,color:"#8B85D4",goal:profile.proteinGoal??170,unit:"g",today:todayPro,avg:avgPro,dp:0},
+      {label:"Sleep",data:sleepData,color:"#7DBFA0",goal:profile.sleepGoal??7,unit:" hr",today:todaySleep,avg:avgSleep,dp:1}
     ].map(({label,data,color,goal,unit,today,avg,dp})=>(
       <div key={label} style={cardSt}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
@@ -287,7 +285,7 @@ export function DashboardTab({ summary }) {
         <span style={{fontSize:15,fontWeight:600,color:"#1A1A1A"}}>Hydration</span>
         <AvgToggle value={bWindow} setValue={setBWindow} options={["1d","7d","30d"]}/>
       </div>
-      <BarChart data={hydData} goalLine={100} barColor="#5B9BD5" showDow={false}/>
+      <BarChart data={hydData} goalLine={profile.hydrationGoal??100} barColor="#5B9BD5" showDow={false}/>
       {todayHyd!=null&&<div style={{fontSize:13,color:"#888",marginTop:6}}>
         Today <strong style={{color:"#1A1A1A"}}>{Math.round(todayHyd)} oz</strong>
         {avgHyd!=null&&<span> · avg <strong style={{color:"#1A1A1A"}}>{Math.round(avgHyd)} oz</strong></span>}

@@ -1,8 +1,10 @@
+export const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+export const DOWS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 export function fmtKey(d) {
   return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 }
 export function fmtDisplay(d) {
-  return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()]+", "+["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()]+" "+d.getDate();
+  return DOWS[(d.getDay()+6)%7]+", "+MONTHS[d.getMonth()]+" "+d.getDate();
 }
 export function isToday(d) {
   const t=new Date();

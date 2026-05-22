@@ -8,6 +8,7 @@ const DATA_DIR    = path.join(__dirname, "data");
 const ENTRIES_DIR = path.join(DATA_DIR, "entries");
 const SUMMARY_FILE = path.join(DATA_DIR, "summary.json");
 const PLAN_FILE    = path.join(DATA_DIR, "plan.json");
+const PROFILE_FILE = path.join(DATA_DIR, "profile.json");
 
 await fs.mkdir(ENTRIES_DIR, { recursive: true });
 
@@ -81,6 +82,20 @@ app.get("/summary", async (req, res) => {
 
 app.put("/summary", async (req, res) => {
   await fs.writeFile(SUMMARY_FILE, JSON.stringify(req.body, null, 2));
+  res.json({ ok: true });
+});
+
+// --- profile ---
+
+app.get("/profile", async (req, res) => {
+  try {
+    const text = await fs.readFile(PROFILE_FILE, "utf8");
+    res.json(JSON.parse(text));
+  } catch { res.json({}); }
+});
+
+app.put("/profile", async (req, res) => {
+  await fs.writeFile(PROFILE_FILE, JSON.stringify(req.body, null, 2));
   res.json({ ok: true });
 });
 

@@ -1,81 +1,132 @@
 import { useState } from "react";
-import { fmtKey, fmtDisplay, startOfWeek, addDays } from "../utils.js";
+import { fmtKey, fmtDisplay, startOfWeek, addDays, DOWS } from "../utils.js";
 import { fmtPlanWorkout } from "../plan.js";
-import { cardSt, inputSt } from "./ui.jsx";
+import { cardSt } from "./ui.jsx";
 import { SNAPSHOT_SCHEMA_PROMPT } from "../schema.js";
+import { loadEntry } from "../storage.js";
 
 function planToWeekSchedule(plan) {
   const byLabel = {};
-  const DOW_IDX = {"Sun":0,"Mon":1,"Tue":2,"Wed":3,"Thu":4,"Fri":5,"Sat":6};
-  const DOW = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
   Object.entries(plan).forEach(([date, entry]) => {
     if (!byLabel[entry.label]) byLabel[entry.label] = { label:entry.label, start:date, days:{} };
     else if (date < byLabel[entry.label].start) byLabel[entry.label].start = date;
-    const dow = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(date+"T00:00:00").getDay()];
+    const dow = DOWS[(new Date(date+"T00:00:00").getDay()+6)%7];
     byLabel[entry.label].days[dow] = fmtPlanWorkout(entry);
   });
   return Object.values(byLabel)
     .sort((a,b) => a.start < b.start ? -1 : 1)
     .map(w => {
-      const days = DOW.map(d => w.days[d] || "Rest").join(" / ");
+      const days = DOWS.map(d => w.days[d] || "Rest").join(" / ");
       return `${w.label.padEnd(12)} ${w.start}:  ${days}`;
     });
 }
 
-function buildTrackingPrompt(plan) {
+function buildTrackingPrompt(plan, planMeta={}, profile={}, recentEntries=[]) {
   const today = new Date();
   const todayPlan = plan[fmtKey(today)];
+  const goalDate = planMeta.goalDate ? new Date(planMeta.goalDate+"T00:00:00") : null;
+  const goalName = planMeta.goalName || "Goal race";
+  const goalDateStr = goalDate ? goalDate.toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}) : "TBD";
+  const goalDateShort = planMeta.goalDate || "TBD";
+  const planGoal = planMeta.goal || "";
+  const startDate = planMeta.startDate || "";
+  const planDays = Object.keys(plan).length;
+  const planWeeks = Math.round(planDays / 7);
   const currentWeekLabel = todayPlan ? todayPlan.label : "";
   const weekStart = startOfWeek(today);
   const upcomingWorkouts = Array.from({length:7},(_,i)=>addDays(weekStart,i))
     .filter(d=>d>=today)
     .map(d=>{ const p=plan[fmtKey(d)]; return p?fmtDisplay(d).split(", ")[0]+": "+fmtPlanWorkout(p):null; })
     .filter(Boolean).join("\n");
+
+  // Latest weight from recent entries (newest first), fall back to profile
+  const latestWeightLb = (() => {
+    for (const { entry: e } of [...recentEntries].reverse()) {
+      const w = e.metrics?.weight;
+      if (w != null && w !== "" && !isNaN(parseFloat(w))) return parseFloat(w);
+    }
+    return profile.weightLb ?? null;
+  })();
+
+  // Derived stats
+  const wkg = (latestWeightLb || 0) * 0.453592;
+  const bmr = (profile.age && profile.heightCm && latestWeightLb)
+    ? Math.round(10 * wkg + 6.25 * profile.heightCm - 5 * profile.age + (profile.sex === "female" ? -161 : 5))
+    : null;
+  const proteinGoal   = profile.proteinGoal   ?? 170;
+  const hydrationGoal = profile.hydrationGoal ?? 100;
+  const sleepGoal     = profile.sleepGoal     ?? 7;
+  const ct = profile.calorieTarget;
+  const calorieStr = ct == null ? "maintenance"
+    : ct === 0  ? "even (maintenance)"
+    : ct > 0    ? `surplus +${ct} kcal/day`
+    :             `deficit ${ct} kcal/day`;
+  const calorieInstr = bmr
+    ? `- When I ask (or towards the end of the day), tell me how many calories I have left to eat to hit my ${calorieStr} target — TDEE = BMR (~${bmr} kcal) + exercise burned`
+    : `- When I ask (or towards the end of the day), tell me how many calories I have left to eat to hit my ${calorieStr} target — TDEE = BMR + exercise burned`;
+
+  // Physical stats line
+  const physLine = [profile.age && `${profile.age} yr`, profile.sex, profile.heightCm && (() => { const i = profile.heightCm / 2.54; return `${Math.floor(i/12)}ft ${Math.round(i%12)}in`; })(), latestWeightLb && `${latestWeightLb} lb`].filter(Boolean).join(", ");
+
+  // Last 7 days of logs
+  const recentLogLines = recentEntries.map(({ date, entry: e }) => {
+    const lines = [date];
+    if (e.workout && (e.workout.type || e.workout.distance)) {
+      const w = e.workout;
+      const wParts = [w.type, w.distance ? w.distance+" mi" : null, w.pace ? w.pace+" /mi" : null, w.hr ? "HR "+w.hr : null, w.vdot ? "VDOT "+parseFloat(w.vdot).toFixed(1) : null].filter(Boolean).join(", ");
+      lines.push("  workout: "+wParts+" ["+( e.workout_status||"not logged")+"]");
+      if (w.structure) lines.push("  structure: "+w.structure);
+      if (w.notes) lines.push("  notes: "+w.notes);
+      if (w.exercises && w.exercises.length) lines.push("  exercises: "+w.exercises.join("; "));
+    }
+    const m = e.metrics || {};
+    if (m.calIn) lines.push("  cal in: "+m.calIn+(m.calOut?", out: "+m.calOut:"")+", net: "+((parseFloat(m.calIn)||0)-(parseFloat(m.calOut)||0)));
+    if (m.protein) lines.push("  protein: "+m.protein+"g");
+    if (m.hydration) lines.push("  hydration: "+m.hydration+" oz");
+    if (m.sleep) lines.push("  sleep: "+m.sleep+" hr");
+    if (m.weight) lines.push("  weight: "+m.weight+" lb");
+    const food = e.food || {};
+    ["breakfast","lunch","snacks","dinner"].forEach(meal => {
+      if (food[meal]) lines.push("  "+meal+": "+food[meal]+(food[meal+"_cal"]?" ("+food[meal+"_cal"]+" kcal"+(food[meal+"_pro"]?", "+food[meal+"_pro"]+"g protein":"")+")":""));
+    });
+    if (e.other_activity && e.other_activity.length) lines.push("  other activity: "+e.other_activity.map(a=>a.name+(a.duration?" "+a.duration+"min":"")).join("; "));
+    if (e.journal) lines.push("  journal: "+e.journal);
+    if (e.energy) lines.push("  energy: "+e.energy+"/5");
+    return lines.join("\n");
+  });
+
   return [
     "CONTEXT & PURPOSE",
-    "You are my daily fitness and nutrition logging assistant for a structured 22-week marathon training plan. Throughout the day I will post my workouts, meals, and other activity as I do them. Your job is to:",
+    `You are my daily fitness and nutrition logging assistant for a structured ${planWeeks}-week marathon training plan. Throughout the day I will post my workouts, meals, and other activity as I do them. Your job is to:`,
     "- Log everything I post and keep a running record for the day",
     "- Track cumulative nutrition (calories, protein, hydration) and update totals as I log meals",
-    "- When I ask (or towards the end of the day), tell me how many calories I have left to eat to hit my target, or how far over I am — factoring in BMR + any exercise calories burned",
+    calorieInstr,
     "- Flag patterns, concerns, or observations worth noting",
     "- Answer questions about training and nutrition in context of my goals",
     "- At the end of the day, generate a DAILY SNAPSHOT in the exact format specified at the bottom of this prompt, ready for me to copy and paste into my tracking app",
     "This chat is purely for daily logging. I have a separate app that stores my full history and visualizes trends.","",
     "WHO I AM",
-    "29 years old, male, 5ft 9in",
-    "Estimated BMR ~1818 kcal/day (Mifflin-St Jeor: 190 lb / 86.2 kg, 5ft 9in / 175.3 cm, 29 yr, male; recalculate if I log a new weight). TDEE = BMR + exercise calories burned.",
-    "Background: competitive XC and track through high school, ran 4:55 mile and 3:03 marathon at age 19",
-    "Had 4 subsequent marathons: 3:40, 4:20 (no training), 3:55 (poor training), roughly 2 years between each",
-    "Currently rebuilding fitness after a decade away from serious training",
-    "6 weeks of base building before starting current plan",
-    "Taking creatine, current weight includes some extra water weight","",
+    physLine,
+    bmr ? `Estimated BMR: ~${bmr} kcal/day (Mifflin-St Jeor). TDEE = BMR + exercise burned.` : "",
+    profile.background || "[No background set — add in Profile tab]","",
     "GOALS",
-    "Marathon (October 4, 2026 — Twin Cities): A goal 3:20, B goal 3:30",
-    "Long term (5 years): Qualify for Boston Marathon, target ~2:50",
-    "Mile time trial (few weeks post-marathon): Goal sub-5:30",
-    "Lifting (by September 2027): Bench 285 lbs (current ~220), Pull-ups 10 (current 5)","",
+    planGoal ? `${goalName} (${goalDateStr}): ${planGoal}` : `${goalName} (${goalDateStr})`,
+    profile.goals || "","",
     "CURRENT TRAINING PLAN",
-    "22-week plan, started May 4 2026, race October 4 2026",
+    `${planWeeks}-week plan${startDate ? ", started "+startDate : ""}, race ${goalDateShort}`,
     "Currently " + currentWeekLabel,"",
-    "Phase 1 Wks 1-13: Mon/Wed/Fri Lift, Tue intervals/easy, Thu easy, Sat long, Sun rest",
-    "Phase 2 Wks 14-22: Mon Lift, Tue intervals or easy, Wed longer easy, Thu Lift, Fri rest, Sat pace/long, Sun long","",
     "Full schedule:",
     ...planToWeekSchedule(plan),
     "",
-    "Lifting A/B split: A: Squat, shoulder press, assisted pull-ups / B: Deadlift, bench, bent-over row",
-    "Warmup: shoulder mobility. Finisher: face pulls, dead hangs. Modified for mild AC joint irritation.","",
     "PHYSICAL FLAGS TO MONITOR",
-    "- Tibialis anterior tightness — improving",
-    "- AC joint twinges — monitoring, using dumbbells at 30-45 degree angle",
-    "- Fascia tightness — chronic, managed with stretching, massage gun, yoga",
-    "- Wheezing during intervals — first occurrence May 19, monitor going forward","",
+    profile.physicalFlags || "[No flags set — add in Profile tab]","",
     "NUTRITION CONTEXT",
-    "Eating intuitively, protein target 170g+ daily, hydration 100+ oz daily",
-    "Goal: body recomposition — reduce belly fat, maintain/build muscle",
-    "Calorie target: rough deficit or maintenance depending on the day. Use TDEE (BMR ~1818 + exercise burned) as the baseline when estimating calories remaining or surplus.","",
-    "SLEEP","Bed around midnight, wake 6:30-7:00. Goal: 7 hrs average.","",
+    `Protein goal: ${proteinGoal}g/day | Hydration goal: ${hydrationGoal} oz/day | Calorie target: ${calorieStr}`,"",
     "UPCOMING WORKOUTS THIS WEEK",
     upcomingWorkouts||"[no upcoming workouts found]","",
+    "RECENT LOG (last 7 days)",
+    ...(recentLogLines.length ? recentLogLines : ["[no recent entries]"]),
+    "",
     "---",
     "DAILY SNAPSHOT FORMAT",
     "At the end of each day output a JSON snapshot. Paste it raw — no markdown fences, no extra text.",
@@ -84,13 +135,27 @@ function buildTrackingPrompt(plan) {
   ].join("\n");
 }
 
-export function ToolsTab({onSync, syncing, plan, viewMode="full", setViewMode}) {
+export function ToolsTab({onSync, syncing, plan, planMeta={}, profile={}, summary={}, viewMode="full", setViewMode}) {
   const P = plan || {};
   const [promptText, setPromptText] = useState("");
   const [copied, setCopied] = useState(false);
 
-  const generate = () => {
-    try { setPromptText(buildTrackingPrompt(P)); } catch(e) { setPromptText("Error: "+e.message); }
+  const [generating, setGenerating] = useState(false);
+
+  const generate = async () => {
+    setGenerating(true);
+    try {
+      const today = new Date();
+      const dates = Array.from({length: 7}, (_, i) => {
+        const d = new Date(today); d.setDate(d.getDate() - i); return fmtKey(d);
+      });
+      const entries = (await Promise.all(dates.map(async date => {
+        const entry = await loadEntry(date);
+        return entry ? { date, entry } : null;
+      }))).filter(Boolean).reverse();
+      setPromptText(buildTrackingPrompt(P, planMeta, profile, entries));
+    } catch(e) { setPromptText("Error: "+e.message); }
+    setGenerating(false);
   };
   const copy = () => {
     navigator.clipboard.writeText(promptText).then(()=>{ setCopied(true); setTimeout(()=>setCopied(false),2000); });
@@ -111,15 +176,15 @@ export function ToolsTab({onSync, syncing, plan, viewMode="full", setViewMode}) 
           <p style={{fontSize:14,color:"#555",marginBottom:16,lineHeight:1.6}}>
             Generates a prompt for starting a new tracking chat, including your full training plan and snapshot format.
           </p>
-          <button onClick={generate} style={{padding:"10px 24px",background:"#1A1A1A",color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:500,cursor:"pointer"}}>
-            Generate prompt
+          <button onClick={generate} disabled={generating} style={{padding:"10px 24px",background:generating?"#E5E2DB":"#1A1A1A",color:generating?"#BBB":"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:500,cursor:generating?"default":"pointer"}}>
+            {generating ? "Loading…" : "Generate prompt"}
           </button>
         </div>
       : <div style={cardSt}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
             <span style={{fontSize:15,fontWeight:600,color:"#1A1A1A"}}>Tracking chat prompt</span>
             <div style={{display:"flex",gap:8}}>
-              <button onClick={generate} style={{fontSize:12,color:"#888",background:"none",border:"0.5px solid #D8D5CC",borderRadius:8,padding:"4px 10px",cursor:"pointer"}}>Regenerate</button>
+              <button onClick={generate} disabled={generating} style={{fontSize:12,color:generating?"#CCC":"#888",background:"none",border:"0.5px solid #D8D5CC",borderRadius:8,padding:"4px 10px",cursor:generating?"default":"pointer"}}>{generating?"Loading…":"Regenerate"}</button>
               <button onClick={copy} style={{fontSize:12,color:copied?"#1D9E75":"#888",background:"none",border:"0.5px solid #D8D5CC",borderRadius:8,padding:"4px 10px",cursor:"pointer"}}>{copied?"Copied!":"Copy"}</button>
             </div>
           </div>

@@ -1,14 +1,12 @@
 import { useState, useEffect } from "react";
 import { TYPE_STYLE, dotLabel, fmtPlanWorkout } from "../plan.js";
-import { fmtKey, fmtDisplay, isToday, startOfWeek, addDays } from "../utils.js";
-import { cardSt } from "./ui.jsx";
-import { Badge } from "./ui.jsx";
+import { fmtKey, fmtDisplay, isToday, startOfWeek, addDays, MONTHS, DOWS } from "../utils.js";
+import { cardSt, Badge } from "./ui.jsx";
 
-const DOWS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-const RACE_DATE = new Date(2026, 9, 4);
-
-export function PlanTab({onViewLog, summary, plan}) {
+export function PlanTab({onViewLog, summary, plan, planMeta={}}) {
   const P = plan || {};
+  const RACE_DATE = planMeta.goalDate ? new Date(planMeta.goalDate+"T00:00:00") : null;
+  const RACE_NAME = planMeta.goalName || "Race";
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date()));
   const [calOpen, setCalOpen] = useState(false);
   const [calMonth, setCalMonth] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
@@ -21,7 +19,6 @@ export function PlanTab({onViewLog, summary, plan}) {
     if (calOpen) setCalMonth(new Date(weekStart.getFullYear(), weekStart.getMonth(), 1));
   }, [weekStart, calOpen]);
 
-  const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const weekDays = Array.from({length:7}, (_,i)=>addDays(weekStart,i));
 
   const isLogged   = key => !!(planEntries[key]?.savedAt);
@@ -63,8 +60,9 @@ export function PlanTab({onViewLog, summary, plan}) {
     </div>;
   }
 
-  const daysToRace = Math.ceil((RACE_DATE - new Date(new Date().toDateString())) / 86400000);
-  const weeksToRace = Math.floor(daysToRace / 7);
+  const planDays = Object.keys(P).length || 154;
+  const daysToRace = RACE_DATE ? Math.ceil((RACE_DATE - new Date(new Date().toDateString())) / 86400000) : null;
+  const weeksToRace = daysToRace != null ? Math.floor(daysToRace / 7) : null;
   const planKeys = Object.keys(P);
   const totalPlannedWorkouts = planKeys.filter(k=>P[k].type!=="Rest").length;
   const totalPlannedMiles = planKeys.reduce((s,k)=>s+(parseFloat(P[k].distance)||0),0);
@@ -110,7 +108,7 @@ export function PlanTab({onViewLog, summary, plan}) {
           {calOpen
             ? <div style={{display:"flex",alignItems:"center",gap:2}}>
                 <button onClick={()=>setCalMonth(new Date(calMonth.getFullYear(),calMonth.getMonth()-1,1))} style={{background:"none",border:"none",color:"#888",cursor:"pointer",fontSize:18,padding:"0 4px"}}>&#8249;</button>
-                <span style={{fontSize:13,color:"#666",fontWeight:500,width:68,textAlign:"center",display:"inline-block"}}>{monthNames[calMonth.getMonth()]} {calMonth.getFullYear()}</span>
+                <span style={{fontSize:13,color:"#666",fontWeight:500,width:68,textAlign:"center",display:"inline-block"}}>{MONTHS[calMonth.getMonth()]} {calMonth.getFullYear()}</span>
                 <button onClick={()=>setCalMonth(new Date(calMonth.getFullYear(),calMonth.getMonth()+1,1))} style={{background:"none",border:"none",color:"#888",cursor:"pointer",fontSize:18,padding:"0 4px"}}>&#8250;</button>
               </div>
             : <span style={{fontSize:12,color:"#AAA7A0"}}>{fmtDisplay(weekStart).split(", ")[1]} – {fmtDisplay(addDays(weekStart,6)).split(", ")[1]}</span>
@@ -174,18 +172,18 @@ export function PlanTab({onViewLog, summary, plan}) {
 
     <div style={cardSt}>
       <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:2}}>
-        <span style={{fontSize:13,fontWeight:600,color:"#1A1A1A"}}>Twin Cities Marathon</span>
-        <span style={{fontSize:13,color:"#888"}}>Oct 4, 2026</span>
+        <span style={{fontSize:13,fontWeight:600,color:"#1A1A1A"}}>{RACE_NAME}</span>
+        <span style={{fontSize:13,color:"#888"}}>{planMeta.goalDate ? new Date(planMeta.goalDate+"T00:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : ""}</span>
       </div>
-      <div style={{fontSize:12,color:"#AAA7A0",marginBottom:12}}>{weeksToRace} weeks · {daysToRace} days to go</div>
+      <div style={{fontSize:12,color:"#AAA7A0",marginBottom:12}}>{weeksToRace!=null?weeksToRace+" weeks · ":""}{daysToRace!=null?daysToRace+" days to go":""}</div>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         <div>
           <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#888",marginBottom:4}}>
             <span>Plan progress</span>
-            <span style={{color:"#1A1A1A",fontWeight:500}}>{Math.round((1-(daysToRace/154))*100)}%</span>
+            <span style={{color:"#1A1A1A",fontWeight:500}}>{daysToRace!=null?Math.round((1-(daysToRace/planDays))*100)+"%":""}</span>
           </div>
           <div style={{height:5,borderRadius:4,background:"#E5E2DB",overflow:"hidden"}}>
-            <div style={{height:"100%",borderRadius:4,background:"#1A1A1A",width:Math.round((1-(daysToRace/154))*100)+"%"}}/>
+            <div style={{height:"100%",borderRadius:4,background:"#1A1A1A",width:daysToRace!=null?Math.round((1-(daysToRace/planDays))*100)+"%":"0%"}}/>
           </div>
         </div>
         <div>

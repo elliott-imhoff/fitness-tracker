@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { cardSt, Spinner, Empty, Badge, EditCard, Metric, Field, TArea, saveBtnSt, inputSt } from "./ui.jsx";
 import { fmtKey, fmtDisplay, isToday } from "../utils.js";
-import { emptyEntry, fmtWorkout, matchesPlan, fmtPlanWorkout, PLAN_TYPES } from "../plan.js";
+import { emptyEntry, matchesPlan, fmtPlanWorkout, PLAN_TYPES } from "../plan.js";
 import { entryToSummary, saveSummary, loadEntry, saveEntry, savePlanDay } from "../storage.js";
 import { validateEntry } from "../schema.js";
 
+const HR_REST_DEFAULT = 58;
+const HR_MAX_DEFAULT  = 194;
+
 // --- vdot ---
-const HR_REST = 58;
-const HR_MAX  = 194;
 function calcVDOT(D, T) {
   const V = D / T;
   const pct = 0.8 + 0.1894393 * Math.exp(-0.012778 * T) + 0.2989558 * Math.exp(-0.1932605 * T);
@@ -37,7 +38,7 @@ function repTimesToAvgPace(repTimes, repDistM) {
   const secs = Math.round(secsPerMile % 60);
   return mins + ":" + String(secs).padStart(2, "0");
 }
-function estimateVDOT(w) {
+function estimateVDOT(w, hrRest=HR_REST_DEFAULT, hrMax=HR_MAX_DEFAULT) {
   const type = (w.type || "").toLowerCase();
   const isInterval = type.includes("interval") || type.includes("repeat");
   const isSteady = type.includes("easy") || type.includes("long") || type.includes("recovery");
@@ -59,8 +60,8 @@ function estimateVDOT(w) {
   const D = dist * 1609.34, T = pace * dist;
   const vdotPace = calcVDOT(D, T);
   if (isNaN(vdotPace) || vdotPace <= 0) return "";
-  if (isSteady && !isNaN(hr) && hr > HR_REST && hr < HR_MAX) {
-    const pctHRmax = hr / HR_MAX;
+  if (isSteady && !isNaN(hr) && hr > hrRest && hr < hrMax) {
+    const pctHRmax = hr / hrMax;
     const vo2AtPace = -4.60 + 0.182258 * (D/T) + 0.000104 * Math.pow(D/T, 2);
     const aerobicVDOT = vo2AtPace / pctHRmax;
     const capped = Math.min(Math.max(aerobicVDOT / vdotPace, 0.80), 1.25);
@@ -109,19 +110,22 @@ function WorkoutDisplay({w}) {
   </div>;
 }
 
-function MetricsDisplay({m,nc}) {
+function MetricsDisplay({m, nc, goals={}}) {
   const ncColor=nc===null?undefined:nc<0?"#C0392B":"#1D9E75";
   const ncVal=nc===null?null:(nc>0?"+":"")+Math.round(nc);
+  const proteinGoal   = goals.proteinGoal   ?? 170;
+  const hydrationGoal = goals.hydrationGoal ?? 100;
+  const sleepGoal     = goals.sleepGoal     ?? 7;
   return <div style={{display:"flex",flexDirection:"column",gap:8}}>
     <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:8}}>
       <Metric label="Cal in"    value={m.calIn?Number(m.calIn).toLocaleString():null} sub="kcal"/>
       <Metric label="Cal out"   value={m.calOut||null} sub="exercise"/>
       <Metric label="Net cal"   value={ncVal} sub="kcal" hl={ncColor}/>
-      <Metric label="Protein"   value={m.protein?m.protein+"g":null} sub="goal 180g"/>
+      <Metric label="Protein"   value={m.protein?m.protein+"g":null} sub={`goal ${proteinGoal}g`}/>
     </div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}>
-      <Metric label="Hydration" value={m.hydration?m.hydration+" oz":null} sub="goal 100 oz"/>
-      <Metric label="Sleep"     value={m.sleep?m.sleep+" hr":null} sub="goal 7 hr"/>
+      <Metric label="Hydration" value={m.hydration?m.hydration+" oz":null} sub={`goal ${hydrationGoal} oz`}/>
+      <Metric label="Sleep"     value={m.sleep?m.sleep+" hr":null} sub={`goal ${sleepGoal} hr`}/>
       <Metric label="Weight"    value={m.weight?m.weight+" lb":null}/>
     </div>
   </div>;
@@ -232,7 +236,7 @@ function OtherActivityEditor({activities, onSave}) {
   </div>;
 }
 
-export function LogTab({date, setDate, summary, onSummaryChange, plan, onPlanChange, viewMode="full"}) {
+export function LogTab({date, setDate, summary, onSummaryChange, plan, onPlanChange, viewMode="full", profile={}}) {
   const [entry, setEntry] = useState(emptyEntry());
   const [raw, setRaw]     = useState("");
   const [parsing, setParsing]   = useState(false);
@@ -246,6 +250,10 @@ export function LogTab({date, setDate, summary, onSummaryChange, plan, onPlanCha
   const [planMiles, setPlanMiles] = useState("");
   const [planType, setPlanType] = useState("");
   const [planStructure, setPlanStructure] = useState("");
+  const hrMax  = profile.hrMax  ?? HR_MAX_DEFAULT;
+  const hrRest  = profile.hrRest ?? HR_REST_DEFAULT;
+  const goals   = { proteinGoal: profile.proteinGoal, hydrationGoal: profile.hydrationGoal, sleepGoal: profile.sleepGoal };
+
   const openSection = (id) => { setEditSection(id); setEditError(""); };
 
   const loadEntry_ = useCallback(async d => {
@@ -277,7 +285,7 @@ export function LogTab({date, setDate, summary, onSummaryChange, plan, onPlanCha
       const parsed = JSON.parse(raw);
       validateEntry(parsed);
       const fresh = { ...emptyEntry(), ...parsed, savedAt: new Date().toISOString() };
-      fresh.workout.vdot = estimateVDOT(fresh.workout);
+      fresh.workout.vdot = estimateVDOT(fresh.workout, hrRest, hrMax);
       const planForDay = (plan||{})[fmtKey(date)];
       fresh.workout_status = planForDay
         ? (matchesPlan(fresh.workout.type, planForDay.type) ? "done" : null)
@@ -294,7 +302,7 @@ export function LogTab({date, setDate, summary, onSummaryChange, plan, onPlanCha
     const updated = { ...entry, savedAt: new Date().toISOString() };
     updated[section] = data;
     if (section === "workout") {
-      updated.workout.vdot = estimateVDOT(updated.workout);
+      updated.workout.vdot = estimateVDOT(updated.workout, hrRest, hrMax);
       const planForDay = (plan||{})[fmtKey(date)];
       updated.workout_status = planForDay
         ? (matchesPlan(updated.workout.type, planForDay.type) ? "done" : null)
@@ -307,6 +315,16 @@ export function LogTab({date, setDate, summary, onSummaryChange, plan, onPlanCha
       return;
     }
     await persist(updated); setEditSection(null); setEditError("");
+  };
+
+  const recalcVDOT = async () => {
+    if (!entry.workout?.type && !entry.workout?.distance) return;
+    const newVdot = estimateVDOT(entry.workout, hrRest, hrMax);
+    if (newVdot === entry.workout.vdot) return;
+    const updated = { ...entry, savedAt: new Date().toISOString() };
+    updated.workout = { ...entry.workout, vdot: newVdot };
+    try { validateEntry(updated); } catch { return; }
+    await persist(updated);
   };
 
   const nc = (() => { const i = parseFloat(entry.metrics.calIn), o = parseFloat(entry.metrics.calOut); if (isNaN(i) && isNaN(o)) return null; return (isNaN(i) ? 0 : i) - (isNaN(o) ? 0 : o); })();
@@ -414,11 +432,14 @@ export function LogTab({date, setDate, summary, onSummaryChange, plan, onPlanCha
       </div>
 
       <EditCard title="Workout detail" id="workout" editSection={editSection} setEditSection={openSection} error={editError}
+        right={hasData && entry.workout.type && editSection !== "workout"
+          ? <button onClick={recalcVDOT} style={{fontSize:11,color:"#AAA",background:"none",border:"0.5px solid #D8D5CC",borderRadius:7,padding:"2px 8px",cursor:"pointer",whiteSpace:"nowrap"}}>Recalc VDOT</button>
+          : null}
         display={hasData && entry.workout.type ? <WorkoutDisplay w={entry.workout}/> : <Empty text="No workout logged yet — paste your summary above"/>}
         editor={<WorkoutEditor w={entry.workout} onSave={w => saveEdits("workout", w)}/>}/>
 
       <EditCard title="Metrics" id="metrics" editSection={editSection} setEditSection={openSection} error={editError}
-        display={<MetricsDisplay m={entry.metrics} nc={nc}/>}
+        display={<MetricsDisplay m={entry.metrics} nc={nc} goals={goals}/>}
         editor={<MetricsEditor m={entry.metrics} onSave={m => saveEdits("metrics", m)}/>}/>
 
       <EditCard title="Food log" id="food" editSection={editSection} setEditSection={openSection} error={editError}
