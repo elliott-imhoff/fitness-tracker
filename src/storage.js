@@ -1,19 +1,38 @@
+import { calcBMR, calcCalSteps, estimateVDOT } from "./utils.js";
+
 const BASE = "http://localhost:3001";
 
-export function entryToSummary(e) {
+export function entryToSummary(e, profile={}) {
   if (!e || !e.savedAt) return null;
+  const num = v => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+  const w = num(e.metrics?.weight) || num(profile.weightLb) || 185;
+  const bmr = calcBMR(w, profile.heightCm, profile.age, profile.sex);
+  const steps = num(e.metrics?.steps);
+  const calSteps = calcCalSteps(steps, w);
+  const calIn = num(e.metrics?.calIn);
+  const liftBonus = (e.workout?.type||'').toLowerCase().includes('lift') && e.workout_status === 'done' ? 300 : 0;
+  const calAdj = profile.calAdjustment ?? 0;
+  const calBase = bmr + liftBonus + calAdj;
+  const calOut = calSteps != null ? Math.round(calSteps + calBase) : null;
+  const ncSteps = calIn != null && calOut != null ? calIn - calOut : null;
+  const vdot = estimateVDOT(e.workout, profile.hrRest ?? 58, profile.hrMax ?? 194);
   return {
     savedAt: e.savedAt,
     workout_status: e.workout_status || null,
-    weight:    e.metrics ? e.metrics.weight    : "",
-    sleep:     e.metrics ? e.metrics.sleep     : "",
-    calIn:     e.metrics ? e.metrics.calIn     : "",
-    calOut:    e.metrics ? e.metrics.calOut    : "",
-    protein:   e.metrics ? e.metrics.protein   : "",
-    hydration: e.metrics ? e.metrics.hydration : "",
-    vdot:      e.workout ? e.workout.vdot      : "",
-    type:      e.workout ? e.workout.type      : "",
-    distance:  e.workout ? (parseFloat(e.workout.distance) || 0) : 0,
+    weight:    num(e.metrics?.weight),
+    sleep:     num(e.metrics?.sleep),
+    calIn,
+    protein:   num(e.metrics?.protein),
+    hydration: num(e.metrics?.hydration),
+    steps:     steps != null ? Math.round(steps) : null,
+    bmr,
+    calSteps,
+    calBase,
+    calOut,
+    ncSteps,
+    vdot,
+    type:     e.workout?.type || null,
+    distance: num(e.workout?.distance),
   };
 }
 
@@ -82,13 +101,13 @@ export async function savePlanDay(date, dayPlan) {
   });
 }
 
-export async function syncSummaryFromEntries(plan) {
+export async function syncSummaryFromEntries(plan, profile={}) {
   const keys = Object.keys(plan || {});
   const result = {};
   await Promise.all(keys.map(async key => {
     const entry = await loadEntry(key);
     if (entry) {
-      const s = entryToSummary(entry);
+      const s = entryToSummary(entry, profile);
       if (s) result[key] = s;
     }
   }));

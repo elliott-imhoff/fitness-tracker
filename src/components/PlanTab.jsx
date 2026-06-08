@@ -117,9 +117,9 @@ export function PlanTab({onViewLog, summary, plan, planMeta={}}) {
         </div>
       </div>
 
-      {!calOpen && <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:4,borderRadius:10,border:"1px solid #C8C4BC",overflow:"hidden"}}>
+      {!calOpen && <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:4}}>
         <div style={{display:"flex",flex:1,alignItems:"flex-start",justifyContent:"space-between"}}>
-          {weekDays.map((day,idx)=><DotRow key={fmtKey(day)} day={day} idx={idx} inMonth={true}/>)}
+          {weekDays.map((day,idx)=><DotRow key={fmtKey(day)} day={day} idx={idx} inMonth={false}/>)}
         </div>
       </div>}
 

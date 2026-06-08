@@ -14,7 +14,7 @@ export default function AthleteLog() {
   const [planMeta, setPlanMeta] = useState({});
   const [profile, setProfile] = useState({});
   const [syncing, setSyncing] = useState(false);
-  const [viewMode, setViewMode] = useState("full");
+  const [viewMode, setViewMode] = useState("minimal");
 
   useEffect(() => {
     loadSummary().then(s => setSummary(s));
@@ -24,7 +24,7 @@ export default function AthleteLog() {
 
   const handleSync = async () => {
     setSyncing(true);
-    const rebuilt = await syncSummaryFromEntries(plan);
+    const rebuilt = await syncSummaryFromEntries(plan, profile);
     setSummary(rebuilt);
     setSyncing(false);
   };

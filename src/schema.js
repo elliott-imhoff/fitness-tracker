@@ -19,7 +19,6 @@ export const ENTRY_SCHEMA = {
         hr:               { type: "string", pattern: "^(\\d+)?$",   description: "Average heart rate bpm" },
         hr_peak:          { type: "string", pattern: "^(\\d+)?$",   description: "Peak heart rate bpm" },
         duration:         { type: "string", pattern: "^(\\d+)?$",   description: "Minutes. Required for Lift." },
-        calories_burned:  { type: "string", pattern: "^(\\d+)?$",   description: "kcal" },
         structure:        { type: "string",                          description: "Intervals only. E.g. \"6x400m\"" },
         rep_count:        { type: "string", pattern: "^(\\d+)?$",   description: "Intervals only. Number of reps." },
         rep_distance_m:   { type: "string", pattern: "^(\\d+)?$",   description: "Intervals only. Meters per rep." },
@@ -43,7 +42,6 @@ export const ENTRY_SCHEMA = {
         properties: {
           description: { type: "string", description: "Activity name" },
           duration:    { type: "string", pattern: "^(\\d+)?$", description: "Minutes" },
-          calories:    { type: "string", pattern: "^(\\d+)?$", description: "kcal" },
         },
         additionalProperties: false,
       },
@@ -56,10 +54,10 @@ export const ENTRY_SCHEMA = {
       properties: {
         sleep:     { type: "string", pattern: "^(\\d+(\\.\\d+)?)?$", description: "Hours, decimal. E.g. \"7.5\"" },
         weight:    { type: "string", pattern: "^(\\d+(\\.\\d+)?)?$", description: "Lbs, morning weight. E.g. \"189.5\"" },
-        calIn:     { type: "string", pattern: "^(\\d+)?$",           description: "Total calories consumed" },
-        calOut:    { type: "string", pattern: "^(\\d+)?$",           description: "Total calories burned (BMR + exercise = full TDEE)" },
-        protein:   { type: "string", pattern: "^(\\d+)?$",           description: "Grams" },
-        hydration: { type: "string", pattern: "^(\\d+)?$",           description: "Oz" },
+        calIn:       { type: "string", pattern: "^(\\d+)?$",          description: "Total calories consumed. E.g. \"2400\"" },
+        protein:     { type: "string", pattern: "^(\\d+)?$",           description: "Grams" },
+        hydration:   { type: "string", pattern: "^(\\d+)?$",           description: "Oz" },
+        steps:       { type: "string", pattern: "^(\\d+)?$",           description: "Total steps for the day from phone (includes all activity). E.g. \"9500\"" },
       },
       additionalProperties: false,
     },
@@ -107,8 +105,14 @@ function schemaToPrompt(schema, indent = 0) {
       if (val.type === "object") {
         lines.push(`${pad}  "${key}": ${schemaToPrompt(val, indent + 1)}${comma}${comment}`);
       } else if (val.type === "array") {
-        const itemExample = val.items?.type === "string" ? `"${val.description?.match(/"([^"]+)"/)?.[1] || "..."}"` : "...";
-        lines.push(`${pad}  "${key}": [${itemExample}]${comma}${comment}`);
+        if (val.items?.type === "string") {
+          const itemExample = `"${val.description?.match(/"([^"]+)"/)?.[1] || "..."}"`;
+          lines.push(`${pad}  "${key}": [${itemExample}]${comma}${comment}`);
+        } else if (val.items?.type === "object") {
+          lines.push(`${pad}  "${key}": [${schemaToPrompt(val.items, indent + 1)}]${comma}${comment}`);
+        } else {
+          lines.push(`${pad}  "${key}": []${comma}${comment}`);
+        }
       } else {
         const example = exampleValue(key, val);
         lines.push(`${pad}  "${key}": ${example}${comma}${comment}${req}`);

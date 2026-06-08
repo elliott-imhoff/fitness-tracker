@@ -57,13 +57,15 @@ function buildTrackingPrompt(plan, planMeta={}, profile={}, recentEntries=[]) {
   const hydrationGoal = profile.hydrationGoal;
   const sleepGoal     = profile.sleepGoal;
   const ct = profile.calorieTarget;
+  const calAdj = profile.calAdjustment ?? 0;
   const calorieStr = ct == null ? "maintenance"
     : ct === 0  ? "even (maintenance)"
     : ct > 0    ? `surplus +${ct} kcal/day`
     :             `deficit ${ct} kcal/day`;
-  const calorieInstr = bmr
-    ? `- When I ask (or towards the end of the day), tell me how many calories I have left to eat to hit my ${calorieStr} target — TDEE = BMR (~${bmr} kcal) + exercise burned`
-    : `- When I ask (or towards the end of the day), tell me how many calories I have left to eat to hit my ${calorieStr} target — TDEE = BMR + exercise burned`;
+  const baseline = bmr ? bmr + calAdj : null;
+  const calorieInstr = baseline
+    ? `- Track my estimated calorie burn throughout the day in real time. Baseline burn = BMR (~${bmr} kcal) + adjustment (~${calAdj} kcal) = ~${baseline} kcal before activity. As I log workouts and activity, add estimated calories burned on top (runs: use distance × ~${Math.round((latestWeightLb||190)*0.63/10)*10} kcal/mi; lifts: ~300 kcal; other: estimate by type/duration). When I ask how many calories I have left, compute: calories remaining = (baseline + activity burned so far + ${ct} target) − cal in so far. Important: these activity calorie estimates are for intraday guidance only — do NOT include them in the snapshot JSON. The app calculates calories burned from step count at end of day.`
+    : `- Track estimated calorie burn throughout the day. Baseline = BMR + adjustment before activity. Add workout/activity estimates as I log them. Do NOT include activity calorie estimates in the snapshot JSON.`;
 
   // Physical stats line
   const physLine = [profile.age && `${profile.age} yr`, profile.sex, profile.heightCm && (() => { const i = profile.heightCm / 2.54; return `${Math.floor(i/12)}ft ${Math.round(i%12)}in`; })(), latestWeightLb && `${latestWeightLb} lb`].filter(Boolean).join(", ");
@@ -80,7 +82,11 @@ function buildTrackingPrompt(plan, planMeta={}, profile={}, recentEntries=[]) {
       if (w.exercises && w.exercises.length) lines.push("  exercises: "+w.exercises.join("; "));
     }
     const m = e.metrics || {};
-    if (m.calIn) lines.push("  cal in: "+m.calIn+(m.calOut?", out: "+m.calOut:"")+", net: "+((parseFloat(m.calIn)||0)-(parseFloat(m.calOut)||0)));
+    if (m.calIn) {
+      const calSteps = m.steps ? Math.round(parseFloat(m.steps) * (0.04 * (latestWeightLb||150) / 150)) : null;
+      const net = bmr && calSteps != null ? (parseFloat(m.calIn)||0) - calSteps - bmr : null;
+      lines.push("  cal in: "+m.calIn+(m.steps?", steps: "+Number(m.steps).toLocaleString():"")+( net!=null?", net: "+Math.round(net):""));
+    }
     if (m.protein) lines.push("  protein: "+m.protein+"g");
     if (m.hydration) lines.push("  hydration: "+m.hydration+" oz");
     if (m.sleep) lines.push("  sleep: "+m.sleep+" hr");
@@ -107,7 +113,6 @@ function buildTrackingPrompt(plan, planMeta={}, profile={}, recentEntries=[]) {
     "This chat is purely for daily logging. I have a separate app that stores my full history and visualizes trends.","",
     "WHO I AM",
     physLine,
-    bmr ? `Estimated BMR: ~${bmr} kcal/day (Mifflin-St Jeor). TDEE = BMR + exercise burned.` : "",
     profile.background || "[No background set — add in Profile tab]","",
     "GOALS",
     planGoal ? `${goalName} (${goalDateStr}): ${planGoal}` : `${goalName} (${goalDateStr})`,
@@ -121,7 +126,7 @@ function buildTrackingPrompt(plan, planMeta={}, profile={}, recentEntries=[]) {
     "PHYSICAL FLAGS TO MONITOR",
     profile.physicalFlags || "[No flags set — add in Profile tab]","",
     "NUTRITION CONTEXT",
-    [proteinGoal!=null&&`Protein goal: ${proteinGoal}g/day`, hydrationGoal!=null&&`Hydration goal: ${hydrationGoal} oz/day`, sleepGoal!=null&&`Sleep goal: ${sleepGoal} hr/night`, `Calorie target: ${calorieStr}`].filter(Boolean).join(" | "),"",
+    [proteinGoal!=null&&`Protein goal: ${proteinGoal}g/day`, hydrationGoal!=null&&`Hydration goal: ${hydrationGoal} oz/day`, sleepGoal!=null&&`Sleep goal: ${sleepGoal} hr/night`, `Calorie target: ${calorieStr}`, baseline&&`Daily baseline burn (BMR + adj): ~${baseline} kcal`].filter(Boolean).join(" | "),"",
     "UPCOMING WORKOUTS THIS WEEK",
     upcomingWorkouts||"[no upcoming workouts found]","",
     "RECENT LOG (last 7 days)",

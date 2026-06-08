@@ -15,9 +15,11 @@ const STAT_FIELDS = [
   { key: "vdotShort",    label: "VDOT goal (short)", unit: "",    type: "number", step: 0.1, min: 20,  max: 85, placeholder: "—" },
   { key: "vdotLong",     label: "VDOT goal (long)",  unit: "",    type: "number", step: 0.1, min: 20,  max: 85, placeholder: "—" },
   { key: "proteinGoal",  label: "Protein goal",   unit: "g",   type: "number", step: 5,   min: 50,  max: 500 },
-  { key: "hydrationGoal",label: "Hydration goal", unit: "oz",  type: "number", step: 5,   min: 32,  max: 300 },
-  { key: "sleepGoal",    label: "Sleep goal",     unit: "hr",  type: "number", step: 0.5, min: 4,   max: 12 },
-  { key: "calorieTarget",label: "Cal target",     unit: "kcal net", type: "number", step: 50, min: -1500, max: 1500, placeholder: "0 = even" },
+  { key: "hydrationGoal",label: "Hydration goal", unit: "oz",  type: "number", step: 5,    min: 32,   max: 300 },
+  { key: "sleepGoal",    label: "Sleep goal",     unit: "hr",  type: "number", step: 0.5,  min: 4,    max: 12 },
+  { key: "stepsGoal",    label: "Steps goal",     unit: "steps", type: "number", step: 500, min: 1000, max: 30000, placeholder: "10000" },
+  { key: "calorieTarget",  label: "Cal target",     unit: "kcal net", type: "number", step: 50, min: -1500, max: 1500, placeholder: "0 = even" },
+  { key: "calAdjustment",  label: "Cal adjustment", unit: "kcal",     type: "number", step: 50, min: -1000, max: 2000, placeholder: "0" },
 ];
 
 function cmToFtIn(cm) {
