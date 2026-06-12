@@ -10,8 +10,6 @@ const SECTIONS = [
 
 const STAT_FIELDS = [
   { key: "age",          label: "Age",            unit: "yr",  type: "number", step: 1,   min: 10, max: 99 },
-  { key: "hrMax",        label: "HR max",         unit: "bpm", type: "number", step: 1,   min: 100, max: 230 },
-  { key: "hrRest",       label: "HR rest",        unit: "bpm", type: "number", step: 1,   min: 30,  max: 100 },
   { key: "proteinGoal",  label: "Protein goal",   unit: "g",   type: "number", step: 5,   min: 50,  max: 500 },
   { key: "hydrationGoal",label: "Hydration goal", unit: "oz",  type: "number", step: 5,    min: 32,   max: 300 },
   { key: "sleepGoal",    label: "Sleep goal",     unit: "hr",  type: "number", step: 0.5,  min: 4,    max: 12 },
