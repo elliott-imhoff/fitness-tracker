@@ -1,22 +1,7 @@
-import { useState } from "react";
-import { cardSt } from "./ui.jsx";
-import { MONTHS } from "../utils.js";
-
-function dateLbl(ds) {
-  const d = new Date(ds + "T00:00:00");
-  const today = new Date(); today.setHours(0,0,0,0);
-  return d.getTime() === today.getTime() ? "Today" : MONTHS[d.getMonth()] + " " + d.getDate();
-}
-
-function Tooltip({ x, y, text, W }) {
-  const w = text.length * 5.8 + 12;
-  const tx = Math.min(Math.max(x - w/2, 2), W - w - 2);
-  const ty = y - 28;
-  return <g pointerEvents="none">
-    <rect x={tx} y={ty} width={w} height={18} rx={4} fill="#1A1A1A" opacity={0.85}/>
-    <text x={tx + w/2} y={ty + 12} textAnchor="middle" fontSize={9.5} fill="#FFF" fontWeight={500}>{text}</text>
-  </g>;
-}
+import { useState, useEffect, useRef } from "react";
+import { cardSt, Tooltip, dateLbl } from "./ui.jsx";
+import { MONTHS, parsePaceMmSs } from "../utils.js";
+import { loadAerobic } from "../storage.js";
 
 function AvgToggle({ value, setValue, options }) {
   return <div style={{display:"flex",gap:4}}>
@@ -26,54 +11,60 @@ function AvgToggle({ value, setValue, options }) {
   </div>;
 }
 
-function LineChart({ data, avg=[], trend, targetLine, targetLabel, dotColor, lineColor }) {
+function LineChart({ data, avg = [], trend, dotColor = "#185FA5", lineColor = "#185FA5" }) {
   const [hi, setHi] = useState(null);
-  const W=300, H=80, PT=10, PB=4;
-  if (!data.length) return <svg width="100%" viewBox={`0 0 ${W} ${H+18}`}><text x={W/2} y={H/2} textAnchor="middle" fontSize={11} fill="#CCC">No data</text></svg>;
+  const W = 300, H = 80, PT = 10, PB = 4;
+  if (!data.length) return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H + 18}`}>
+      <text x={W / 2} y={H / 2} textAnchor="middle" fontSize={11} fill="#CCC">No data</text>
+    </svg>
+  );
   const n = data.length;
-  const vals = data.map(d=>d.val);
-  const allV = [...vals, ...(targetLine!=null?[targetLine]:[]), ...(trend||[])];
-  let mn=Math.min(...allV), mx=Math.max(...allV);
-  const pad=(mx-mn)*0.3||2; mn-=pad; mx+=pad;
-  const xf = i => n<2 ? W/2 : (i/(n-1))*W;
-  const yf = v => PT+(1-(v-mn)/(mx-mn))*(H-PT-PB);
-  const avgPath = avg.map((a,i)=>`${i===0?"M":"L"}${xf(i).toFixed(1)},${yf(a).toFixed(1)}`).join(" ");
-  const trendPath = trend&&trend.length>=2 ? `M${xf(0).toFixed(1)},${yf(trend[0]).toFixed(1)} L${xf(n-1).toFixed(1)},${yf(trend[n-1]).toFixed(1)}` : null;
-  const lblIdx = n<=1?[0]:n<=4?[0,n-1]:[0,Math.floor(n/3),Math.floor(2*n/3),n-1];
+  const vals = data.map(d => d.val);
+  const allV = [...vals, ...(trend || [])];
+  let mn = Math.min(...allV), mx = Math.max(...allV);
+  const pad = (mx - mn) * 0.3 || 2; mn -= pad; mx += pad;
+  const xf = i => n < 2 ? W / 2 : (i / (n - 1)) * W;
+  const yf = v => PT + (1 - (v - mn) / (mx - mn)) * (H - PT - PB);
+  const avgPath = avg.map((a, i) => `${i === 0 ? "M" : "L"}${xf(i).toFixed(1)},${yf(a).toFixed(1)}`).join(" ");
+  const trendPath = trend && trend.length >= 2
+    ? `M${xf(0).toFixed(1)},${yf(trend[0]).toFixed(1)} L${xf(n - 1).toFixed(1)},${yf(trend[n - 1]).toFixed(1)}`
+    : null;
+  const lblIdx = n <= 1 ? [0] : n <= 4 ? [0, n - 1] : [0, Math.floor(n / 3), Math.floor(2 * n / 3), n - 1];
   const uniq = [...new Set(lblIdx)];
-
-  const handleMouseMove = (e) => {
+  const handleMouseMove = e => {
     const rect = e.currentTarget.getBoundingClientRect();
     const svgX = (e.clientX - rect.left) / rect.width * W;
-    const idx = n < 2 ? 0 : Math.max(0, Math.min(n-1, Math.round(svgX / W * (n-1))));
-    setHi(idx);
+    setHi(n < 2 ? 0 : Math.max(0, Math.min(n - 1, Math.round(svgX / W * (n - 1)))));
   };
-
-  const tipText = hi!=null ? (() => {
+  const tipText = hi != null ? (() => {
     const parts = [`${dateLbl(data[hi].date)}: ${data[hi].val.toFixed(1)}`];
-    if (avg[hi]!=null) parts.push(`avg ${avg[hi].toFixed(1)}`);
-    if (trend?.[hi]!=null) parts.push(`trend ${trend[hi].toFixed(1)}`);
+    if (avg[hi] != null) parts.push(`avg ${avg[hi].toFixed(1)}`);
+    if (trend?.[hi] != null) parts.push(`trend ${trend[hi].toFixed(1)}`);
     return parts.join("  ·  ");
   })() : null;
-
-  return <svg width="100%" viewBox={`0 0 ${W} ${H+18}`} style={{overflow:"visible",cursor:"crosshair"}}
-      onMouseMove={handleMouseMove} onMouseLeave={()=>setHi(null)}>
-    {targetLine!=null&&<line x1={0} y1={yf(targetLine)} x2={W} y2={yf(targetLine)} stroke="#E8A857" strokeWidth={1} strokeDasharray="4 3"/>}
-    {targetLabel&&<text x={W-2} y={yf(targetLine)-3} textAnchor="end" fontSize={9} fill="#E8A857">{targetLabel}</text>}
-    {trendPath&&<path d={trendPath} stroke="#E05C5C" strokeWidth={1.5} fill="none" strokeDasharray="5 3" opacity={0.7}/>}
-    <path d={avgPath} stroke={lineColor} strokeWidth={2} fill="none" strokeLinejoin="round"/>
-    {data.map((d,i)=>(
-      <circle key={i} cx={xf(i)} cy={yf(d.val)} r={hi===i?5:2.5} fill={dotColor} opacity={hi===i?1:0.75} style={{transition:"r 0.1s"}}/>
-    ))}
-    {hi!=null&&<line x1={xf(hi)} y1={PT} x2={xf(hi)} y2={H} stroke="#999" strokeWidth={0.8} strokeDasharray="3 2" opacity={0.6}/>}
-    {hi!=null&&avg[hi]!=null&&<circle cx={xf(hi)} cy={yf(avg[hi])} r={4} fill={lineColor} opacity={0.9}/>}
-    {hi!=null&&trend?.[hi]!=null&&<circle cx={xf(hi)} cy={yf(trend[hi])} r={3.5} fill="#E05C5C" opacity={0.9}/>}
-    {uniq.map(i=><text key={i} x={xf(i)} y={H+16} textAnchor={i===0?"start":i===n-1?"end":"middle"} fontSize={9} fill="#AAA">{dateLbl(data[i].date)}</text>)}
-    {hi!=null&&tipText&&<Tooltip x={xf(hi)} y={PT+28} text={tipText} W={W}/>}
-  </svg>;
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H + 18}`} style={{ overflow: "visible", cursor: "crosshair" }}
+        onMouseMove={handleMouseMove} onMouseLeave={() => setHi(null)}>
+      {trendPath && <path d={trendPath} stroke="#E05C5C" strokeWidth={1.5} fill="none" strokeDasharray="5 3" opacity={0.7} />}
+      <path d={avgPath} stroke={lineColor} strokeWidth={2} fill="none" strokeLinejoin="round" />
+      {data.map((d, i) => (
+        <circle key={i} cx={xf(i)} cy={yf(d.val)} r={hi === i ? 5 : 2.5} fill={dotColor} opacity={hi === i ? 1 : 0.75} style={{ transition: "r 0.1s" }} />
+      ))}
+      {hi != null && <line x1={xf(hi)} y1={PT} x2={xf(hi)} y2={H} stroke="#999" strokeWidth={0.8} strokeDasharray="3 2" opacity={0.6} />}
+      {hi != null && avg[hi] != null && <circle cx={xf(hi)} cy={yf(avg[hi])} r={4} fill={lineColor} opacity={0.9} />}
+      {hi != null && trend?.[hi] != null && <circle cx={xf(hi)} cy={yf(trend[hi])} r={3.5} fill="#E05C5C" opacity={0.9} />}
+      {uniq.map(i => (
+        <text key={i} x={xf(i)} y={H + 16} textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"} fontSize={9} fill="#AAA">
+          {dateLbl(data[i].date)}
+        </text>
+      ))}
+      {hi != null && tipText && <Tooltip x={xf(hi)} y={PT + 28} text={tipText} W={W} />}
+    </svg>
+  );
 }
 
-function BarChart({ data, goalLine, barColor, negColor, showDow }) {
+export function BarChart({ data, goalLine, barColor, negColor, showDow }) {
   const [tip, setTip] = useState(null);
   const W=280, H=70, PT=14;
   const DOWS_SHORT = ["M","T","W","T","F","S","S"];
@@ -103,7 +94,7 @@ function BarChart({ data, goalLine, barColor, negColor, showDow }) {
       return <rect key={i} x={bx} y={by} width={bw} height={bh} rx={2.5} fill={col}
         opacity={isHot?1:i===data.length-1?0.9:0.55}
         onMouseEnter={()=>setTip({i, x:xc(i), y:by, text:`${d.lbl||dateLbl(d.date)}: ${Number(d.val)%1===0?d.val:Number(d.val).toFixed(1)}`})}
-        style={{cursor:"default"}}/>;
+        style={{cursor:"default"}}/> ;
     })}
     {data.map((d,i)=>{
       const n=data.length;
@@ -115,7 +106,6 @@ function BarChart({ data, goalLine, barColor, negColor, showDow }) {
         const maxLbls = 6;
         if (n <= maxLbls) return true;
         const count = Math.min(maxLbls, n);
-        // evenly spaced indices from 0 to n-1
         const ticks = Array.from({length: count}, (_, k) => Math.round(k * (n - 1) / (count - 1)));
         return ticks.includes(i);
       })();
@@ -165,9 +155,184 @@ function CalorieGroupChart({ data, goalNet=0 }) {
   </svg>;
 }
 
+function olsLinearTrend(vals) {
+  const n = vals.length;
+  if (n < 2) return [...vals];
+  const sumX  = (n * (n - 1)) / 2;
+  const sumX2 = (n * (n - 1) * (2 * n - 1)) / 6;
+  const sumY  = vals.reduce((a, b) => a + b, 0);
+  const sumXY = vals.reduce((sum, v, i) => sum + i * v, 0);
+  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+  const intercept = (sumY - slope * sumX) / n;
+  return vals.map((_, i) => intercept + slope * i);
+}
+
+const MODE_CFG = {
+  ef:   { label: "EF",   color: "#185FA5" },
+  pace: { label: "Pace", color: "#1D9E75" },
+  hr:   { label: "HR",   color: "#E05C5C" },
+};
+
+const RUN_COLORS = ["#185FA5","#E05C5C","#1D9E75","#E8A857","#7B5EA7","#0C8A8A","#C0392B","#888"];
+
+function RunSplitChart({ runs }) {
+  const [hi, setHi] = useState(null); // hovered mile number
+  const [mode, setMode] = useState("ef");
+  const W = 300, H = 90, PT = 10, PB = 4;
+  if (!runs.length || !runs[0].mileSplits?.length) return null;
+  const getVal = s => mode === "ef" ? s.ef * 100 : mode === "pace" ? (parsePaceMmSs(s.pace) ?? 0) : s.avgHR;
+  const maxMile = Math.max(...runs.flatMap(r => r.mileSplits.map(s => s.mile)));
+  const xf = mile => maxMile <= 1 ? W / 2 : ((mile - 1) / (maxMile - 1)) * W;
+  const allTrends = runs.flatMap(r => { const t = olsLinearTrend(r.mileSplits.map(getVal)); return [t[0], t[t.length-1]]; });
+  const allVals = runs.flatMap(r => r.mileSplits.map(getVal));
+  let mn = Math.min(...allVals, ...allTrends), mx = Math.max(...allVals, ...allTrends);
+  const pad = (mx - mn) * 0.25 || 0.001; mn -= pad; mx += pad;
+  const yf = v => PT + (1 - (v - mn) / (mx - mn)) * (H - PT - PB);
+  const handleMove = e => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const svgX = (e.clientX - rect.left) / rect.width * W;
+    let bestMile = null, bestDist = Infinity;
+    for (let m = 1; m <= maxMile; m++) {
+      const dx = Math.abs(xf(m) - svgX);
+      if (dx < bestDist) { bestDist = dx; bestMile = m; }
+    }
+    setHi(bestMile);
+  };
+  const hiX = hi != null ? xf(hi) : null;
+  // All runs' splits at the hovered mile
+  const hiSplits = hi != null
+    ? runs.map((r, ri) => ({ ri, s: r.mileSplits.find(s => s.mile === hi) })).filter(x => x.s)
+    : [];
+  const fmtModeVal = s => mode === "ef" ? (s.ef * 100).toFixed(3)
+    : mode === "pace" ? s.pace + "/mi"
+    : Math.round(s.avgHR) + " bpm";
+  const runMeta = runs.map((r, ri) => {
+    const vals = r.mileSplits.map(getVal);
+    const t = olsLinearTrend(vals);
+    const slope = vals.length >= 2 ? (t[t.length - 1] - t[0]) / (vals.length - 1) : 0;
+    const good = mode === "ef" ? slope >= 0 : slope <= 0;
+    const slopeText = mode === "ef" ? `${slope >= 0 ? "+" : ""}${slope.toFixed(3)}/mi`
+      : mode === "pace" ? `${slope * 60 >= 0 ? "+" : ""}${Math.round(slope * 60)} sec/mi`
+      : `${slope >= 0 ? "+" : ""}${slope.toFixed(1)} bpm/mi`;
+    return { color: RUN_COLORS[ri % RUN_COLORS.length], trend: t, slope, good, slopeText };
+  });
+  const xLabels = Array.from({ length: maxMile }, (_, i) => i + 1);
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        {Object.entries(MODE_CFG).map(([key, c]) => (
+          <button key={key} onClick={() => { setMode(key); setHi(null); }}
+            style={{ fontSize: 12, padding: "3px 10px", borderRadius: 20,
+              border: `1px solid ${mode === key ? c.color : "#CCC"}`,
+              background: mode === key ? c.color : "none",
+              color: mode === key ? "#FFF" : "#666", cursor: "pointer", fontWeight: 500 }}>
+            {c.label}
+          </button>
+        ))}
+      </div>
+      <svg width="100%" viewBox={`0 0 ${W} ${H + 30}`} style={{ overflow: "visible", cursor: "crosshair" }}
+        onMouseMove={handleMove} onMouseLeave={() => setHi(null)}>
+        {hiX != null && <line x1={hiX} y1={PT} x2={hiX} y2={H} stroke="#999" strokeWidth={0.8} strokeDasharray="3 2" opacity={0.6} />}
+        {runs.map((r, ri) => {
+          const { color, trend } = runMeta[ri];
+          const x0 = xf(r.mileSplits[0].mile), x1 = xf(r.mileSplits[r.mileSplits.length - 1].mile);
+          const linePath = r.mileSplits.map((s, i) => `${i === 0 ? "M" : "L"}${xf(s.mile).toFixed(1)},${yf(getVal(s)).toFixed(1)}`).join(" ");
+          return (
+            <g key={ri}>
+              <line x1={x0} y1={yf(trend[0])} x2={x1} y2={yf(trend[trend.length - 1])}
+                stroke={color} strokeWidth={1.5} strokeDasharray="5 3" opacity={0.55} />
+              <path d={linePath} stroke={color} strokeWidth={2} fill="none" strokeLinejoin="round" opacity={0.85} />
+              {r.mileSplits.map((s, si) => (
+                <circle key={si} cx={xf(s.mile)} cy={yf(getVal(s))} r={s.mile === hi ? 6 : 3}
+                  fill={color} opacity={s.mile === hi ? 1 : 0.8} style={{ transition: "r 0.1s" }} />
+              ))}
+            </g>
+          );
+        })}
+        {xLabels.map(m => (
+          <text key={m} x={xf(m)} y={H + 16} textAnchor={m === 1 ? "start" : m === maxMile ? "end" : "middle"} fontSize={9} fill="#AAA">{m}</text>
+        ))}
+        <text x={W / 2} y={H + 27} textAnchor="middle" fontSize={8} fill="#CCC" fontStyle="italic">mile</text>
+        {hiSplits.length > 0 && (() => {
+          const lineH = 14, vpad = 5, hpad = 8, dotR = 3, dotGap = 10;
+          const tipLines = hiSplits.map(({ ri, s }) => ({
+            color: runMeta[ri].color,
+            text: `${runs.length > 1 ? dateLbl(runs[ri].date) + "  " : `mi ${hi}  `}${fmtModeVal(s)}`,
+          }));
+          const tw = Math.max(...tipLines.map(l => l.text.length)) * 5.8 + hpad * 2 + dotGap + dotR * 2;
+          const th = tipLines.length * lineH + vpad * 2;
+          const tx = Math.min(Math.max(hiX - tw / 2, 2), W - tw - 2);
+          const ty = Math.min(PT + 4, H - th - 4);
+          return (
+            <g pointerEvents="none">
+              <rect x={tx} y={ty} width={tw} height={th} rx={4} fill="#1A1A1A" opacity={0.88} />
+              {tipLines.map(({ color, text }, i) => (
+                <g key={i}>
+                  <circle cx={tx + hpad + dotR} cy={ty + vpad + i * lineH + lineH / 2} r={dotR} fill={color} />
+                  <text x={tx + hpad + dotGap} y={ty + vpad + i * lineH + lineH * 0.72} fontSize={9.5} fill="#FFF" fontWeight={500}>{text}</text>
+                </g>
+              ))}
+            </g>
+          );
+        })()}
+      </svg>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
+        {runs.map((r, ri) => {
+          const { color, good, slopeText } = runMeta[ri];
+          return (
+            <div key={r.date} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <svg width="16" height="8" style={{ flexShrink: 0 }}><line x1="0" y1="4" x2="16" y2="4" stroke={color} strokeWidth="2" /><circle cx="8" cy="4" r="2.5" fill={color} /></svg>
+              <span style={{ fontSize: 12, color: "#555", minWidth: 56 }}>{dateLbl(r.date)}</span>
+              <span style={{ fontSize: 12, color: "#888" }}>Trend <strong style={{ color: good ? "#1D9E75" : "#E05C5C" }}>{slopeText}</strong></span>
+              {r.ef0 != null && <span style={{ fontSize: 12, color: "#888" }}>EF₀ <strong style={{ color: "#1A1A1A" }}>{(r.ef0 * 100).toFixed(3)}</strong></span>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function DashboardTab({ summary, profile={} }) {
-  const [vdotFilter, setVdotFilter] = useState("aerobic");
   const [bWindow, setBWindow] = useState("1d");
+
+  // ── Aerobic / Long runs ───────────────────────────────────────────────────
+  const [aerobic, setAerobic] = useState({});
+  const [selectedDates, setSelectedDates] = useState(null);
+  const [runDropdownOpen, setRunDropdownOpen] = useState(false);
+  const runDropdownRef = useRef(null);
+
+  useEffect(() => { loadAerobic().then(setAerobic); }, []);
+
+  const allRuns = Object.values(aerobic)
+    .filter(r => r.mileSplits && r.mileSplits.length > 0)
+    .sort((a, b) => a.date < b.date ? -1 : 1);
+
+  useEffect(() => {
+    if (selectedDates === null && allRuns.length) {
+      setSelectedDates(new Set([allRuns[allRuns.length - 1].date]));
+    }
+  }, [allRuns.length, selectedDates]);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (runDropdownRef.current && !runDropdownRef.current.contains(e.target)) {
+        setRunDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const toggleDate = date => {
+    setSelectedDates(prev => {
+      const next = new Set(prev ?? []);
+      if (next.has(date)) { next.delete(date); } else { next.add(date); }
+      return next;
+    });
+  };
+
+  const selectedRuns = allRuns.filter(r => selectedDates?.has(r.date));
 
   const allEntries = Object.entries(summary)
     .filter(([,e]) => e && e.savedAt)
@@ -255,21 +420,9 @@ export function DashboardTab({ summary, profile={} }) {
     });
   }
 
-  const VDOT_TYPE_GROUPS = {
-    aerobic:  e => { const t=(e.type||"").toLowerCase(); return t.includes("long")||t.includes("easy"); },
-    interval: e => { const t=(e.type||"").toLowerCase(); return t.includes("interval")||t.includes("repeat"); },
-    long:     e => (e.type||"").toLowerCase().includes("long"),
-    easy:     e => { const t=(e.type||"").toLowerCase(); return t.includes("easy")||t.includes("recovery"); },
-  };
-  const VDOT_COLORS = { aerobic:"#A8D5B8", interval:"#F4A460", long:"#7BAFD4", easy:"#B8A8D5" };
-
   const weightData = getField(allEntries,"weight",9999);
   const weightAvg  = rollingAvg(weightData,7);
   const wTrend     = lrFit(weightData);
-  const vdotRaw    = allEntries.filter(e=>e.vdot!=null&&!isNaN(e.vdot)&&VDOT_TYPE_GROUPS[vdotFilter](e));
-  const vdotData   = getField(vdotRaw,"vdot",9999);
-  const vdotAvg    = rollingAvg(vdotData,7);
-  const vTrend     = lrFit(vdotData);
 
   const calDailyRaw   = allEntries
     .filter(e => e.calIn != null)
@@ -290,7 +443,6 @@ export function DashboardTab({ summary, profile={} }) {
 
   const mean = arr => arr.length ? arr.reduce((s,d)=>s+d.val,0)/arr.length : null;
   const todayW=weightData.at(-1)?.val, avgW=weightAvg.at(-1);
-  const todayV=vdotData.at(-1)?.val, avgV=vdotAvg.at(-1);
   const todayCalEntry = calGroupData.at(-1);
   const avgCalIn  = calGroupData.length ? calGroupData.reduce((s,d)=>s+d.calIn,0)/calGroupData.length : null;
   const avgCalOut = calGroupData.length ? calGroupData.reduce((s,d)=>s+d.calOut,0)/calGroupData.length : null;
@@ -303,6 +455,60 @@ export function DashboardTab({ summary, profile={} }) {
   const fmtN = (v,d=1) => v!=null ? v.toFixed(d) : "—";
 
   return <div style={{padding:16,display:"flex",flexDirection:"column",gap:12}}>
+
+    {/* Long runs */}
+    <div style={cardSt}>
+      <div style={{ fontSize: 15, fontWeight: 600, color: "#1A1A1A", marginBottom: 12 }}>Long runs</div>
+      {allRuns.length === 0
+        ? <p style={{ fontSize: 14, color: "#AAA", fontStyle: "italic", margin: 0 }}>Upload TCX files to see run profiles.</p>
+        : <>
+            <div style={{ position: "relative", marginBottom: 12 }} ref={runDropdownRef}>
+              <button
+                onClick={() => setRunDropdownOpen(o => !o)}
+                style={{ width: "100%", textAlign: "left", padding: "8px 12px", borderRadius: 10,
+                  border: "0.5px solid #D8D5CC", background: "#F5F3EF", fontSize: 13,
+                  color: "#1A1A1A", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>
+                  {selectedRuns.length === 0
+                    ? <span style={{ color: "#AAA" }}>Select runs…</span>
+                    : selectedRuns.map(r => dateLbl(r.date)).join(", ")}
+                </span>
+                <span style={{ fontSize: 10, color: "#AAA", marginLeft: 8 }}>{runDropdownOpen ? "▲" : "▼"}</span>
+              </button>
+              {runDropdownOpen && (
+                <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0,
+                  background: "#FFF", border: "0.5px solid #D8D5CC", borderRadius: 10,
+                  boxShadow: "0 4px 16px rgba(0,0,0,0.10)", zIndex: 20, overflow: "hidden" }}>
+                  {[...allRuns].reverse().map((r, idx) => {
+                    const sel = selectedDates?.has(r.date);
+                    const selIdx = selectedRuns.indexOf(r);
+                    const color = sel ? RUN_COLORS[selIdx % RUN_COLORS.length] : "#CCC";
+                    return (
+                      <label key={r.date}
+                        style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px",
+                          cursor: "pointer", borderBottom: idx < allRuns.length - 1 ? "0.5px solid #F0EDE8" : "none",
+                          background: sel ? "#F5F3EF" : "#FFF" }}
+                        onClick={() => toggleDate(r.date)}>
+                        <span style={{ width: 14, height: 14, borderRadius: 3, border: `2px solid ${color}`,
+                          background: sel ? color : "#FFF", flexShrink: 0, display: "flex",
+                          alignItems: "center", justifyContent: "center" }}>
+                          {sel && <svg width="8" height="6"><polyline points="1,3 3,5 7,1" stroke="#FFF" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                        </span>
+                        <span style={{ fontSize: 13, color: "#1A1A1A", flex: 1 }}>{dateLbl(r.date)}</span>
+                        <span style={{ fontSize: 12, color: "#AAA" }}>{r.distance} mi</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {selectedRuns.length > 0
+              ? <RunSplitChart runs={selectedRuns} />
+              : <p style={{ fontSize: 13, color: "#AAA", fontStyle: "italic", margin: 0 }}>Select at least one run above.</p>
+            }
+          </>
+      }
+    </div>
 
     {/* Weight */}
     <div style={cardSt}>
@@ -321,31 +527,6 @@ export function DashboardTab({ summary, profile={} }) {
         {wTrend!=null&&<span style={{marginLeft:8,color:wTrend.slopePerWeek<=0?"#1D9E75":"#E05C5C"}}>
           {wTrend.slopePerWeek<=0?"↓":"↑"} {Math.abs(wTrend.slopePerWeek).toFixed(2)} lb/wk trend
         </span>}
-      </div>}
-    </div>
-
-    {/* VDOT */}
-    <div style={cardSt}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-        <span style={{fontSize:15,fontWeight:600,color:"#1A1A1A"}}>Est. VDOT</span>
-      </div>
-      <div style={{display:"flex",gap:6,marginBottom:10}}>
-        {[["aerobic","Aerobic"],["interval","Interval"],["long","Long"],["easy","Easy"]].map(([val,lbl])=>(
-          <button key={val} onClick={()=>setVdotFilter(val)} style={{fontSize:11,padding:"2px 9px",borderRadius:20,border:`1px solid ${vdotFilter===val?VDOT_COLORS[val]:"#CCC"}`,background:vdotFilter===val?VDOT_COLORS[val]:"none",color:vdotFilter===val?"#1A1A1A":"#888",cursor:"pointer",fontWeight:vdotFilter===val?600:400}}>{lbl}</button>
-        ))}
-      </div>
-      <div style={{display:"flex",gap:14,fontSize:11,color:"#888",marginBottom:4}}>
-        <span><svg width={18} height={8} style={{verticalAlign:"middle",marginRight:3}}><line x1={0} y1={4} x2={18} y2={4} stroke={VDOT_COLORS[vdotFilter]} strokeWidth={2}/><circle cx={9} cy={4} r={2.5} fill={VDOT_COLORS[vdotFilter]}/></svg>Per run</span>
-        <span><svg width={18} height={8} style={{verticalAlign:"middle",marginRight:3}}><line x1={0} y1={4} x2={18} y2={4} stroke="#1D7A55" strokeWidth={2.5}/></svg>7d avg</span>
-        <span><svg width={22} height={8} style={{verticalAlign:"middle",marginRight:3}}><line x1={0} y1={4} x2={22} y2={4} stroke="#E05C5C" strokeWidth={1.5} strokeDasharray="5 3"/></svg>Trend</span>
-      </div>
-      <LineChart data={vdotData} avg={vdotAvg} trend={vTrend?.fitted} dotColor={VDOT_COLORS[vdotFilter]} lineColor="#1D7A55"
-        targetLine={(vdotFilter==="interval") ? (profile.vdotShort??null) : (profile.vdotLong??null)}
-        targetLabel={(vdotFilter==="interval") ? (profile.vdotShort?`goal ${profile.vdotShort}`:undefined) : (profile.vdotLong?`goal ${profile.vdotLong}`:undefined)}/>
-      {todayV!=null&&<div style={{fontSize:13,color:"#888",marginTop:6}}>
-        Today <strong style={{color:"#1A1A1A"}}>{fmtN(todayV)}</strong>
-        {avgV!=null&&<span> &nbsp;7d avg <strong style={{color:"#1A1A1A"}}>{fmtN(avgV)}</strong></span>}
-        {vTrend!=null&&<span style={{marginLeft:8,color:vTrend.slopePerWeek>=0?"#1D9E75":"#E05C5C"}}>{vTrend.slopePerWeek>=0?"↑":"↓"} {Math.abs(vTrend.slopePerWeek).toFixed(2)}/wk trend</span>}
       </div>}
     </div>
 

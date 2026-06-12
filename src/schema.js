@@ -29,7 +29,6 @@ export const ENTRY_SCHEMA = {
           items: { type: "string" },
         },
         notes:            { type: "string", description: "Conditions, how it felt, anything notable" },
-        vdot:             { type: "string", description: "Computed by app — omit, will be overwritten" },
       },
       additionalProperties: false,
     },

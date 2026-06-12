@@ -1,18 +1,17 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { cardSt, Spinner, Empty, Badge, EditCard, Metric, Field, TArea, saveBtnSt, inputSt } from "./ui.jsx";
-import { fmtKey, fmtDisplay, isToday } from "../utils.js";
-import { matchesPlan, PLAN_TYPES } from "../utils.js";
+import { fmtKey, fmtDisplay, isToday, matchesPlan, PLAN_TYPES } from "../utils.js";
+import { entryToSummary, saveSummary, loadEntry, saveEntry, savePlanDay, uploadTcx, loadAerobic } from "../storage.js";
+import { validateEntry } from "../schema.js";
 
 const emptyEntry = () => ({
   savedAt:null, workout_status:null,
-  workout:{ type:"", distance:"", pace:"", hr:"", hr_peak:"", vdot:"", rep_distance_m:"", rep_count:"", rep_times:"", structure:"", duration:"", exercises:[], notes:"" },
+  workout:{ type:"", distance:"", pace:"", hr:"", hr_peak:"", rep_distance_m:"", rep_count:"", rep_times:"", structure:"", duration:"", exercises:[], notes:"" },
   other_activity: [],
   metrics:{ calIn:"", protein:"", hydration:"", sleep:"", weight:"", steps:"" },
   food:{ breakfast:"", lunch:"", snacks:"", dinner:"", breakfast_cal:0, breakfast_pro:0, lunch_cal:0, lunch_pro:0, snacks_cal:0, snacks_pro:0, dinner_cal:0, dinner_pro:0 },
   energy:"", body:"", sleep_notes:"", journal:""
 });
-import { entryToSummary, saveSummary, loadEntry, saveEntry, savePlanDay } from "../storage.js";
-import { validateEntry } from "../schema.js";
 
 function WorkoutStatusToggle({status, onChange}) {
   const STATES = [null, "done", "skipped"];
@@ -26,29 +25,34 @@ function WorkoutStatusToggle({status, onChange}) {
   return <button onClick={next} style={{fontSize:12,padding:"4px 10px",borderRadius:20,border:`0.5px solid ${c.border}`,background:c.bg,color:c.color,cursor:"pointer",fontWeight:500,whiteSpace:"nowrap",flexShrink:0}}>{c.label}</button>;
 }
 
-function WorkoutDisplay({w, vdot}) {
+function WorkoutDisplay({w, tcxStats}) {
+  // tcxStats (from aerobic.json) takes priority over Claude-provided snapshot values for running stats
+  const t = tcxStats || {};
+  const tv = (tcxVal, snapshotVal) => ({ val: tcxVal || snapshotVal, fromTcx: !!tcxVal });
   const rows=[
-    ["Distance",   w.distance        ? w.distance+" mi"          : null],
-    ["Pace",       w.pace            ? w.pace+" /mi"             : null],
-    ["Avg HR",     w.hr              ? w.hr+" bpm"               : null],
-    ["Peak HR",    w.hr_peak         ? w.hr_peak+" bpm"          : null],
-    ["Duration",   w.duration        ? w.duration+" min"         : null],
-    ["Structure",  w.structure       || null],
-    ["Rep dist",   w.rep_distance_m   ? w.rep_distance_m+" m"   : null],
-    ["Reps",       w.rep_times       ? w.rep_times.split(",").join(", ") : null],
-    ["Est. VDOT",  vdot              ? Number(vdot).toFixed(1)   : null],
-    ["Notes",      w.notes           || null],
-  ].filter(r=>r[1]);
+    ["Distance",   tv(t.distance, w.distance),  v => v+" mi"       ],
+    ["Pace",       tv(t.pace,     w.pace),       v => v+" /mi"      ],
+    ["Avg HR",     tv(t.hr,       w.hr),         v => v+" bpm"      ],
+    ["Peak HR",    tv(t.hr_peak,  w.hr_peak),    v => v+" bpm"      ],
+    ["Duration",   tv(t.duration, w.duration),    v => v+" min"      ],
+    ["Structure",  tv(null, w.structure),        v => v             ],
+    ["Rep dist",   tv(null, w.rep_distance_m),   v => v+" m"        ],
+    ["Reps",       tv(null, w.rep_times),        v => v.split(",").join(", ")],
+    ["Notes",      tv(null, w.notes),            v => v             ],
+  ].filter(([, {val}]) => val);
   const exerciseRows = w.exercises && w.exercises.length > 0
-    ? w.exercises.map((ex, i) => [i === 0 ? "Exercises" : "", ex])
+    ? w.exercises.map((ex, i) => [i === 0 ? "Exercises" : "", { val: ex, fromTcx: false }, v => v])
     : [];
   const allRows = [...rows, ...exerciseRows];
   return <div>
     <div style={{marginBottom:12}}><Badge type={w.type}/></div>
-    {allRows.map(([lbl,val],i)=>(
+    {allRows.map(([lbl, {val, fromTcx}, fmt], i) => (
       <div key={i} style={{display:"flex",gap:12,fontSize:14,padding:"7px 0",borderBottom:i<allRows.length-1?"0.5px solid #EEE":"none"}}>
         <span style={{color:"#888",minWidth:90,flexShrink:0}}>{lbl}</span>
-        <span style={{color:"#1A1A1A",fontWeight:lbl==="Est. VDOT"?500:400}}>{val}</span>
+        <span style={{color:"#1A1A1A",fontWeight:400,display:"flex",alignItems:"center",gap:6}}>
+          {fmt(val)}
+          {fromTcx && <span style={{fontSize:10,padding:"1px 5px",borderRadius:4,background:"#E6F1FB",color:"#0C447C",fontWeight:500,letterSpacing:"0.02em"}}>TCX</span>}
+        </span>
       </div>
     ))}
   </div>;
@@ -109,7 +113,6 @@ function WorkoutEditor({w,onSave}) {
       <Field label="Structure"      value={v.structure}       onChange={x=>u("structure",x)}       placeholder="e.g. 6x400m"/>
       <Field label="Rep dist (m)"   value={v.rep_distance_m}  onChange={x=>u("rep_distance_m",x)}  type="number" placeholder="e.g. 400"/>
       <Field label="Rep times"      value={v.rep_times}       onChange={x=>u("rep_times",x)}       placeholder="1:29,1:32,..."/>
-      <Field label="VDOT override"  value={v.vdot}            onChange={x=>u("vdot",x)}            placeholder="auto-calculated"/>
     </div>
     <Field label="Notes" value={v.notes} onChange={x=>u("notes",x)}/>
     <button style={saveBtnSt} onClick={()=>onSave(v)}>Save</button>
@@ -191,6 +194,10 @@ export function LogTab({date, setDate, summary, onSummaryChange, plan, onPlanCha
   const [planMiles, setPlanMiles] = useState("");
   const [planType, setPlanType] = useState("");
   const [planStructure, setPlanStructure] = useState("");
+  const [tcxStatus, setTcxStatus] = useState(null); // null | "uploading" | "done" | "error"
+  const [tcxMsg, setTcxMsg] = useState("");
+  const [tcxStats, setTcxStats] = useState(null);
+  const tcxInputRef = useRef(null);
   const goals   = { proteinGoal: profile.proteinGoal, hydrationGoal: profile.hydrationGoal, sleepGoal: profile.sleepGoal, calorieTarget: profile.calorieTarget };
 
   const openSection = (id) => { setEditSection(id); setEditError(""); };
@@ -205,7 +212,34 @@ export function LogTab({date, setDate, summary, onSummaryChange, plan, onPlanCha
     setLoading(false);
   }, []);
 
-  useEffect(() => { loadEntry_(date); }, [date, loadEntry_]);
+  useEffect(() => {
+    loadEntry_(date);
+    setTcxStatus(null); setTcxMsg("");
+    loadAerobic().then(a => {
+      const key = fmtKey(date);
+      const entry = a?.[key];
+      if (entry?.pace) setTcxStats({ distance: entry.distance, pace: entry.pace, hr: entry.hr, hr_peak: entry.hr_peak, duration: entry.duration });
+      else setTcxStats(null);
+    });
+  }, [date, loadEntry_]);
+
+  const handleTcxUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!tcxInputRef.current) return;
+    tcxInputRef.current.value = "";
+    if (!file) return;
+    setTcxStatus("uploading"); setTcxMsg("");
+    try {
+      const result = await uploadTcx(fmtKey(date), file);
+      const { workoutStats } = result;
+      setTcxStats({ distance: workoutStats.distance, pace: workoutStats.pace, hr: workoutStats.hr, hr_peak: workoutStats.hr_peak, duration: workoutStats.duration });
+      setTcxStatus("done");
+      setTcxMsg(`${workoutStats.distance} mi · ${workoutStats.pace}/mi · ${workoutStats.hr} bpm avg`);
+    } catch(err) {
+      setTcxStatus("error");
+      setTcxMsg(err.message || "Upload failed");
+    }
+  };
 
   const persist = async e => {
     const key = fmtKey(date);
@@ -359,8 +393,25 @@ export function LogTab({date, setDate, summary, onSummaryChange, plan, onPlanCha
       </div>
 
       <EditCard title="Workout detail" id="workout" editSection={editSection} setEditSection={openSection} error={editError}
-        display={hasData && entry.workout.type ? <WorkoutDisplay w={entry.workout} vdot={summaryRow.vdot}/> : <Empty text="No workout logged yet — paste your summary above"/>}
+        display={hasData && entry.workout.type ? <WorkoutDisplay w={entry.workout} tcxStats={tcxStats}/> : <Empty text="No workout logged yet — paste your summary above"/>}
         editor={<WorkoutEditor w={entry.workout} onSave={w => saveEdits("workout", w)}/>}/>
+
+      <input ref={tcxInputRef} type="file" accept=".tcx" style={{display:"none"}} onChange={handleTcxUpload}/>
+      <div style={{...cardSt, padding:"12px 18px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12}}>
+        <div style={{display:"flex",flexDirection:"column",gap:2}}>
+          <span style={{fontSize:13,fontWeight:500,color:"#1A1A1A"}}>TCX file</span>
+          {tcxStatus === "done"   && <span style={{fontSize:12,color:"#1D9E75"}}>{tcxMsg}</span>}
+          {tcxStatus === "error"  && <span style={{fontSize:12,color:"#C0392B"}}>{tcxMsg}</span>}
+          {tcxStatus === null     && <span style={{fontSize:12,color:"#AAA7A0"}}>Upload to auto-fill workout stats</span>}
+          {tcxStatus === "uploading" && <span style={{fontSize:12,color:"#AAA7A0"}}>Processing…</span>}
+        </div>
+        <button
+          onClick={() => tcxInputRef.current?.click()}
+          disabled={tcxStatus === "uploading"}
+          style={{flexShrink:0,fontSize:12,padding:"5px 13px",borderRadius:20,border:"0.5px solid #D8D5CC",background:tcxStatus==="done"?"#E6F7F1":tcxStatus==="error"?"#FEF0EF":"#F5F3EF",color:tcxStatus==="done"?"#0E7A57":tcxStatus==="error"?"#C0392B":"#555",cursor:tcxStatus==="uploading"?"default":"pointer",fontWeight:500,display:"flex",alignItems:"center",gap:5}}>
+          {tcxStatus === "uploading" ? <><Spinner/>Processing</> : tcxStatus === "done" ? "Re-upload" : "Upload TCX"}
+        </button>
+      </div>
 
       <EditCard title="Metrics" id="metrics" editSection={editSection} setEditSection={openSection} error={editError}
         display={<MetricsDisplay s={summaryRow} goals={goals}/>}

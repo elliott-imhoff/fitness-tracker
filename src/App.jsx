@@ -50,6 +50,6 @@ export default function AthleteLog() {
     {tab === "profile" && <ProfileTab profile={profile} onProfileChange={setProfile} summary={summary}/>}
     {tab === "tools" && <ToolsTab onSync={handleSync} syncing={syncing} plan={plan} planMeta={planMeta} profile={profile} summary={summary} viewMode={viewMode} setViewMode={setViewMode}/>}
 
-    <style>{"@keyframes spin{to{transform:rotate(360deg)}} textarea:focus,input:focus{outline:none;border-color:#B8B5AE!important;}"}</style>
+    <style>{"textarea:focus,input:focus{outline:none;border-color:#B8B5AE!important;}"}</style>
   </div>;
 }

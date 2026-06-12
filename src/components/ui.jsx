@@ -1,4 +1,4 @@
-import { TYPE_STYLE } from "../utils.js";
+import { TYPE_STYLE, MONTHS } from "../utils.js";
 
 export const cardSt   = { background:"#fff", borderRadius:14, border:"0.5px solid #E5E2DB", padding:"16px 18px" };
 export const inputSt  = { fontSize:14, padding:"8px 12px", borderRadius:10, border:"0.5px solid #D8D5CC", background:"#F5F3EF", color:"#1A1A1A", width:"100%", boxSizing:"border-box", fontFamily:"inherit", outline:"none" };
@@ -37,6 +37,23 @@ export function TArea({label,value,onChange,rows=2}) {
     {label&&<label style={{fontSize:12,color:"#888",display:"block",marginBottom:4}}>{label}</label>}
     <textarea value={value||""} onChange={e=>onChange(e.target.value)} rows={rows} style={{...inputSt,resize:"vertical",lineHeight:1.6}}/>
   </div>;
+}
+
+export function dateLbl(ds) {
+  const d = new Date(ds + "T00:00:00");
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return d.getTime() === today.getTime() ? "Today" : MONTHS[d.getMonth()] + " " + d.getDate();
+}
+
+export function Tooltip({ x, y, text, W }) {
+  const w = text.length * 5.8 + 12;
+  const tx = Math.min(Math.max(x - w / 2, 2), W - w - 2);
+  return (
+    <g pointerEvents="none">
+      <rect x={tx} y={y - 26} width={w} height={18} rx={4} fill="#1A1A1A" opacity={0.85} />
+      <text x={tx + w / 2} y={y - 13} textAnchor="middle" fontSize={9.5} fill="#FFF" fontWeight={500}>{text}</text>
+    </g>
+  );
 }
 
 export function EditCard({title,right,id,editSection,setEditSection,display,editor,error}) {

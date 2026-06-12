@@ -1,7 +1,99 @@
 import { useState, useEffect } from "react";
-import { TYPE_STYLE, dotLabel } from "../utils.js";
-import { fmtKey, fmtDisplay, isToday, startOfWeek, addDays, MONTHS, DOWS } from "../utils.js";
-import { cardSt, Badge } from "./ui.jsx";
+import { TYPE_STYLE, dotLabel, fmtKey, fmtDisplay, isToday, startOfWeek, addDays, MONTHS, DOWS, parsePaceMmSs } from "../utils.js";
+import { cardSt, Badge, inputSt, Tooltip, dateLbl } from "./ui.jsx";
+import { loadAerobic } from "../storage.js";
+
+function fmtPaceSec(minPerMile) {
+  const m = Math.floor(minPerMile);
+  const s = Math.round((minPerMile - m) * 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function fmtHHMMSS(totalMinutes) {
+  const h = Math.floor(totalMinutes / 60);
+  const m = Math.floor(totalMinutes % 60);
+  const s = Math.round((totalMinutes * 60) % 60);
+  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function runSimulation(ef0, slope, goalPaceStr, hrCeiling) {
+  const goalPaceMin = parsePaceMmSs(goalPaceStr);
+  if (!goalPaceMin || !ef0 || slope == null || !hrCeiling) return null;
+  const goalSpeedMph = 60 / goalPaceMin;
+  const hrAtStart = goalSpeedMph / ef0;
+  if (hrAtStart >= hrCeiling) {
+    return { wallMile: 0, finishTime: null, paceData: [], hrData: [], warning: "Goal pace exceeds HR ceiling from the start." };
+  }
+  const wallMile = slope !== 0 ? (goalSpeedMph / hrCeiling - ef0) / slope : Infinity;
+  const hasWall = wallMile > 0 && wallMile < 26.2;
+  const step = 0.1;
+  const miles = [];
+  for (let d = 0; d <= 26.2 + 0.001; d += step) miles.push(Math.round(d * 100) / 100);
+  let totalTimeMin = 0;
+  const paceData = [], hrData = [];
+  for (let i = 0; i < miles.length; i++) {
+    const d = miles[i];
+    const ef = Math.max(ef0 + slope * d, 0.001);
+    let speed, hr;
+    if (!hasWall || d <= wallMile) {
+      speed = goalSpeedMph;
+      hr = goalSpeedMph / ef;
+    } else {
+      speed = Math.max(hrCeiling * ef, 0.01);
+      hr = hrCeiling;
+    }
+    paceData.push({ x: d, y: 60 / speed });
+    hrData.push({ x: d, y: hr });
+    if (i > 0) totalTimeMin += (step / speed) * 60;
+  }
+  return { wallMile: hasWall ? wallMile : null, finishTime: fmtHHMMSS(totalTimeMin), totalTimeMin, paceData, hrData, warning: null };
+}
+
+function SimChart({ paceData, hrData, wallMile }) {
+  const [hi, setHi] = useState(null);
+  const W = 300, H = 100, PT = 12, PB = 4;
+  if (!paceData.length) return null;
+  const n = paceData.length;
+  const xf = i => (i / (n - 1)) * W;
+  const paceVals = paceData.map(p => p.y);
+  let pmn = Math.min(...paceVals), pmx = Math.max(...paceVals);
+  const ppad = (pmx - pmn) * 0.25 || 0.2; pmn -= ppad; pmx += ppad;
+  const ypf = v => PT + (1 - (v - pmn) / (pmx - pmn)) * (H - PT - PB);
+  const hrVals = hrData.map(p => p.y);
+  let hmn = Math.min(...hrVals), hmx = Math.max(...hrVals);
+  const hpad = (hmx - hmn) * 0.25 || 5; hmn -= hpad; hmx += hpad;
+  const yhf = v => PT + (1 - (v - hmn) / (hmx - hmn)) * (H - PT - PB);
+  const pacePath = paceData.map((p, i) => `${i === 0 ? "M" : "L"}${xf(i).toFixed(1)},${ypf(p.y).toFixed(1)}`).join(" ");
+  const hrPath   = hrData.map((p, i)   => `${i === 0 ? "M" : "L"}${xf(i).toFixed(1)},${yhf(p.y).toFixed(1)}`).join(" ");
+  const wallX = wallMile != null && wallMile <= 26.2 ? xf(Math.round(wallMile / 26.2 * (n - 1))) : null;
+  const xLabels = [0, Math.floor(n / 4), Math.floor(n / 2), Math.floor(3 * n / 4), n - 1];
+  const tipText = hi != null ? `mi ${paceData[hi].x.toFixed(1)}  pace ${fmtPaceSec(paceData[hi].y)}  HR ${Math.round(hrData[hi].y)}` : null;
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H + 18}`} style={{ overflow: "visible", cursor: "crosshair" }}
+      onMouseMove={e => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const svgX = (e.clientX - rect.left) / rect.width * W;
+        setHi(Math.max(0, Math.min(n - 1, Math.round(svgX / W * (n - 1)))));
+      }}
+      onMouseLeave={() => setHi(null)}>
+      {wallX != null && <line x1={wallX} y1={PT} x2={wallX} y2={H} stroke="#E05C5C" strokeWidth={1} strokeDasharray="4 3" opacity={0.7} />}
+      {wallX != null && <text x={wallX + 3} y={PT + 9} fontSize={8.5} fill="#E05C5C">wall</text>}
+      <path d={pacePath} stroke="#185FA5" strokeWidth={2} fill="none" strokeLinejoin="round" />
+      <path d={hrPath}   stroke="#E05C5C" strokeWidth={2} fill="none" strokeLinejoin="round" />
+      {hi != null && <line x1={xf(hi)} y1={PT} x2={xf(hi)} y2={H} stroke="#999" strokeWidth={0.8} strokeDasharray="3 2" opacity={0.6} />}
+      {xLabels.map(i => (
+        <text key={i} x={xf(i)} y={H + 16} textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"} fontSize={9} fill="#AAA">
+          mi {paceData[i].x.toFixed(0)}
+        </text>
+      ))}
+      {hi != null && tipText && <Tooltip x={xf(hi)} y={PT + 28} text={tipText} W={W} />}
+      <circle cx={W - 80} cy={H - 4} r={3} fill="#185FA5" />
+      <text x={W - 75} y={H - 1} fontSize={8.5} fill="#185FA5">Pace</text>
+      <circle cx={W - 42} cy={H - 4} r={3} fill="#E05C5C" />
+      <text x={W - 37} y={H - 1} fontSize={8.5} fill="#E05C5C">HR</text>
+    </svg>
+  );
+}
 
 export function PlanTab({onViewLog, summary, plan, planMeta={}}) {
   const P = plan || {};
@@ -12,6 +104,48 @@ export function PlanTab({onViewLog, summary, plan, planMeta={}}) {
   const [calMonth, setCalMonth] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [planEntries, setPlanEntries] = useState(summary || {});
   const today = new Date();
+
+  // ── Simulator ────────────────────────────────────────────────────────
+  const [aerobic, setAerobic] = useState({});
+  const [simPace, setSimPace] = useState("8:00");
+  const [simHRCeil, setSimHRCeil] = useState("170");
+  const [simEF0, setSimEF0] = useState("");
+  const [simSlope, setSimSlope] = useState("-0.02");
+  const [simResult, setSimResult] = useState(null);
+
+  useEffect(() => { loadAerobic().then(setAerobic); }, []);
+
+  const allRuns = Object.values(aerobic)
+    .filter(r => r.ef0 != null)
+    .sort((a, b) => a.date < b.date ? -1 : 1);
+  const latestFit = allRuns.at(-1);
+
+  useEffect(() => {
+    if (latestFit) setSimEF0(String(Math.round(latestFit.ef0 * 100 * 10000) / 10000));
+  }, [latestFit?.date]);
+
+  const runSim = () => {
+    const ef0 = parseFloat(simEF0) / 100;
+    const slope = parseFloat(simSlope) / 100;
+    const hrCeil = parseFloat(simHRCeil);
+    if (isNaN(ef0) || isNaN(slope) || isNaN(hrCeil) || !simPace) return;
+    setSimResult(runSimulation(ef0, slope, simPace, hrCeil));
+  };
+
+  const solveCleanPace = () => {
+    const ef0 = parseFloat(simEF0) / 100;
+    const slope = parseFloat(simSlope) / 100;
+    const hrCeil = parseFloat(simHRCeil);
+    if (isNaN(ef0) || isNaN(slope) || isNaN(hrCeil)) return;
+    const efAtFinish = Math.max(ef0 + slope * 26.2, 0.001);
+    const cleanSpeed = hrCeil * efAtFinish;
+    const paceMin = 60 / cleanSpeed;
+    const m = Math.floor(paceMin);
+    const s = Math.round((paceMin - m) * 60);
+    const paceStr = `${m}:${String(s).padStart(2, "0")}`;
+    setSimPace(paceStr);
+    setSimResult(runSimulation(ef0, slope, paceStr, hrCeil));
+  };
 
   useEffect(() => { setPlanEntries(summary || {}); }, [summary]);
   // keep month view in sync when week navigation crosses a month boundary
@@ -206,6 +340,91 @@ export function PlanTab({onViewLog, summary, plan, planMeta={}}) {
           </div>
         </div>
       </div>
+    </div>
+
+    {/* Marathon simulator */}
+    <div style={cardSt}>
+      <div style={{ fontSize: 15, fontWeight: 600, color: "#1A1A1A", marginBottom: 12 }}>Marathon simulator</div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+        <div>
+          <label style={{ fontSize: 12, color: "#888", display: "block", marginBottom: 4 }}>Goal pace (/mi)</label>
+          <input value={simPace} onChange={e => setSimPace(e.target.value)} placeholder="mm:ss" style={inputSt} />
+        </div>
+        <div>
+          <label style={{ fontSize: 12, color: "#888", display: "block", marginBottom: 4 }}>HR ceiling (bpm)</label>
+          <input value={simHRCeil} onChange={e => setSimHRCeil(e.target.value)} type="number" style={inputSt} />
+        </div>
+        <div>
+          <label style={{ fontSize: 12, color: "#888", display: "block", marginBottom: 4 }}>EF₀ (×100)</label>
+          <input value={simEF0} onChange={e => setSimEF0(e.target.value)} type="number" step="0.001" style={inputSt} />
+        </div>
+        <div>
+          <label style={{ fontSize: 12, color: "#888", display: "block", marginBottom: 4 }}>EF slope (/mi)</label>
+          <input value={simSlope} onChange={e => setSimSlope(e.target.value)} type="number" step="0.001" style={inputSt} />
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        <button onClick={runSim} style={{ flex: 1, padding: "9px 0", background: "#1A1A1A", color: "#fff", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
+          Simulate
+        </button>
+        <button onClick={solveCleanPace} title="Find the fastest pace where you finish without hitting the HR ceiling" style={{ flex: 1, padding: "9px 0", background: "#fff", color: "#1A1A1A", border: "0.5px solid #D8D5CC", borderRadius: 10, fontSize: 13, fontWeight: 500, cursor: "pointer" }}>
+          Solve clean pace
+        </button>
+      </div>
+
+      {simResult && (
+        <div>
+          {simResult.warning
+            ? <p style={{ fontSize: 13, color: "#C0392B", marginBottom: 10 }}>{simResult.warning}</p>
+            : <>
+                <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+                  <div style={{ background: "#F5F3EF", borderRadius: 10, padding: "10px 14px", flex: 1, minWidth: 100 }}>
+                    <div style={{ fontSize: 20, fontWeight: 500, color: "#1A1A1A" }}>{simResult.finishTime}</div>
+                    <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Finish time</div>
+                  </div>
+                  <div style={{ background: "#F5F3EF", borderRadius: 10, padding: "10px 14px", flex: 1, minWidth: 100 }}>
+                    {simResult.wallMile != null
+                      ? <>
+                          <div style={{ fontSize: 20, fontWeight: 500, color: "#E05C5C" }}>mi {simResult.wallMile.toFixed(1)}</div>
+                          <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Wall (HR ceiling hit)</div>
+                        </>
+                      : <>
+                          <div style={{ fontSize: 20, fontWeight: 500, color: "#1D9E75" }}>Clean</div>
+                          <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>No wall at this pace</div>
+                        </>
+                    }
+                  </div>
+                  {simResult.wallMile != null && (
+                    <div style={{ background: "#F5F3EF", borderRadius: 10, padding: "10px 14px", flex: 1, minWidth: 100 }}>
+                      <div style={{ fontSize: 20, fontWeight: 500, color: "#1A1A1A" }}>
+                        {fmtPaceSec(simResult.paceData[simResult.paceData.length - 1]?.y ?? 0)}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Finish pace</div>
+                    </div>
+                  )}
+                </div>
+                <SimChart paceData={simResult.paceData} hrData={simResult.hrData} wallMile={simResult.wallMile} />
+                <div style={{ display: "flex", gap: 16, marginTop: 6, fontSize: 11, color: "#AAA7A0" }}>
+                  <span style={{ color: "#185FA5" }}>— Pace (min/mi)</span>
+                  <span style={{ color: "#E05C5C" }}>— HR (bpm)</span>
+                </div>
+              </>
+          }
+        </div>
+      )}
+
+      {!simResult && latestFit && (
+        <p style={{ fontSize: 12, color: "#AAA7A0", margin: 0 }}>
+          EF₀ pre-filled from {dateLbl(latestFit.date)} run. Enter EF slope from the Long runs chart.
+        </p>
+      )}
+      {!simResult && !latestFit && (
+        <p style={{ fontSize: 12, color: "#AAA7A0", margin: 0 }}>
+          Upload a TCX run to auto-fill EF₀. Enter EF slope from the Long runs chart.
+        </p>
+      )}
     </div>
 
   </div>;

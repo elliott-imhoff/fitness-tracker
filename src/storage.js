@@ -1,4 +1,4 @@
-import { calcBMR, calcCalSteps, estimateVDOT } from "./utils.js";
+import { calcBMR, calcCalSteps } from "./utils.js";
 
 const BASE = "http://localhost:3001";
 
@@ -15,7 +15,6 @@ export function entryToSummary(e, profile={}) {
   const calBase = bmr + liftBonus + calAdj;
   const calOut = calSteps != null ? Math.round(calSteps + calBase) : null;
   const ncSteps = calIn != null && calOut != null ? calIn - calOut : null;
-  const vdot = estimateVDOT(e.workout, profile.hrRest ?? 58, profile.hrMax ?? 194);
   return {
     savedAt: e.savedAt,
     workout_status: e.workout_status || null,
@@ -30,7 +29,6 @@ export function entryToSummary(e, profile={}) {
     calBase,
     calOut,
     ncSteps,
-    vdot,
     type:     e.workout?.type || null,
     distance: num(e.workout?.distance),
   };
@@ -113,4 +111,31 @@ export async function syncSummaryFromEntries(plan, profile={}) {
   }));
   await saveSummary(result);
   return result;
+}
+
+export async function uploadTcx(date, file) {
+  const text = await file.text();
+  const res = await fetch(`${BASE}/tcx/${date}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/xml" },
+    body: text,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Upload failed" }));
+    throw new Error(err.error || "Upload failed");
+  }
+  return await res.json(); // { ok, workoutStats, aerobic }
+}
+
+export async function loadAerobic() {
+  try {
+    const res = await fetch(`${BASE}/aerobic`);
+    return res.ok ? await res.json() : {};
+  } catch { return {}; }
+}
+
+export async function recomputeAllTcx() {
+  const res = await fetch(`${BASE}/tcx/recompute-all`, { method: "POST" });
+  if (!res.ok) throw new Error("Recompute failed");
+  return await res.json(); // { ok, recomputed: [dates], errors: [{date, error}] }
 }

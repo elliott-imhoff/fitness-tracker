@@ -3,7 +3,7 @@ import { fmtKey, fmtDisplay, startOfWeek, addDays, DOWS } from "../utils.js";
 import { fmtPlanWorkout } from "../utils.js";
 import { cardSt } from "./ui.jsx";
 import { SNAPSHOT_SCHEMA_PROMPT } from "../schema.js";
-import { loadEntry } from "../storage.js";
+import { loadEntry, recomputeAllTcx } from "../storage.js";
 
 function planToWeekSchedule(plan) {
   const byLabel = {};
@@ -75,7 +75,7 @@ function buildTrackingPrompt(plan, planMeta={}, profile={}, recentEntries=[]) {
     const lines = [date];
     if (e.workout && (e.workout.type || e.workout.distance)) {
       const w = e.workout;
-      const wParts = [w.type, w.distance ? w.distance+" mi" : null, w.pace ? w.pace+" /mi" : null, w.hr ? "HR "+w.hr : null, w.vdot ? "VDOT "+parseFloat(w.vdot).toFixed(1) : null].filter(Boolean).join(", ");
+      const wParts = [w.type, w.distance ? w.distance+" mi" : null, w.pace ? w.pace+" /mi" : null, w.hr ? "HR "+w.hr : null].filter(Boolean).join(", ");
       lines.push("  workout: "+wParts+" ["+( e.workout_status||"not logged")+"]");
       if (w.structure) lines.push("  structure: "+w.structure);
       if (w.notes) lines.push("  notes: "+w.notes);
@@ -144,8 +144,9 @@ export function ToolsTab({onSync, syncing, plan, planMeta={}, profile={}, summar
   const P = plan || {};
   const [promptText, setPromptText] = useState("");
   const [copied, setCopied] = useState(false);
-
   const [generating, setGenerating] = useState(false);
+  const [recomputing, setRecomputing] = useState(false);
+  const [recomputeResult, setRecomputeResult] = useState(null);
 
   const generate = async () => {
     setGenerating(true);
@@ -166,7 +167,33 @@ export function ToolsTab({onSync, syncing, plan, planMeta={}, profile={}, summar
     navigator.clipboard.writeText(promptText).then(()=>{ setCopied(true); setTimeout(()=>setCopied(false),2000); });
   };
 
+  const handleRecompute = async () => {
+    setRecomputing(true); setRecomputeResult(null);
+    try {
+      const r = await recomputeAllTcx();
+      setRecomputeResult(r);
+    } catch(e) { setRecomputeResult({ error: e.message }); }
+    setRecomputing(false);
+  };
+
   return <div style={{padding:16,display:"flex",flexDirection:"column",gap:12}}>
+    <div style={{...cardSt,textAlign:"center",padding:"28px 18px"}}>
+      <div style={{fontSize:15,fontWeight:600,color:"#1A1A1A",marginBottom:8}}>Recompute TCX data</div>
+      <p style={{fontSize:14,color:"#555",marginBottom:16,lineHeight:1.6}}>Re-parses all TCX files in data/tcx/ and rebuilds aerobic.json. Run after fixing the parser or uploading bulk files.</p>
+      <button onClick={handleRecompute} disabled={recomputing} style={{padding:"10px 24px",background:recomputing?"#E5E2DB":"#1A1A1A",color:recomputing?"#BBB":"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:500,cursor:recomputing?"default":"pointer",display:"inline-flex",alignItems:"center",gap:7}}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{animation:recomputing?"spin 1s linear infinite":"none"}}><path d="M21 12a9 9 0 1 1-2.636-6.364M21 3v6h-6"/></svg>
+        {recomputing ? "Recomputing…" : "Recompute all TCX"}
+      </button>
+      {recomputeResult && !recomputeResult.error && (
+        <div style={{marginTop:12,fontSize:13}}>
+          <span style={{color:"#1D9E75",fontWeight:500}}>{recomputeResult.recomputed.length} run{recomputeResult.recomputed.length!==1?"s":""} recomputed</span>
+          {recomputeResult.errors.length > 0 && (
+            <div style={{marginTop:6,color:"#C0392B"}}>{recomputeResult.errors.map(e=>`${e.date}: ${e.error}`).join(" · ")}</div>
+          )}
+        </div>
+      )}
+      {recomputeResult?.error && <div style={{marginTop:10,fontSize:13,color:"#C0392B"}}>{recomputeResult.error}</div>}
+    </div>
     <div style={{...cardSt,textAlign:"center",padding:"28px 18px"}}>
       <div style={{fontSize:15,fontWeight:600,color:"#1A1A1A",marginBottom:8}}>Rebuild summary</div>
       <p style={{fontSize:14,color:"#555",marginBottom:16,lineHeight:1.6}}>Re-reads all entry files and rebuilds the summary index. Run if dashboard or plan dots look stale.</p>
