@@ -179,12 +179,15 @@ function RunSplitChart({ runs }) {
   const [hi, setHi] = useState(null); // hovered mile number
   const [mode, setMode] = useState("ef");
   const W = 300, H = 90, PT = 10, PB = 4;
-  if (!runs.length || !runs[0].mileSplits?.length) return null;
+  // Drop mile 1 — it's noisy (GPS settle, warm-up surge, etc.)
+  const trimmedRuns = runs.map(r => ({ ...r, mileSplits: r.mileSplits.filter(s => s.mile > 1) }));
+  if (!trimmedRuns.length || !trimmedRuns[0].mileSplits?.length) return null;
   const getVal = s => mode === "ef" ? s.ef * 100 : mode === "pace" ? (parsePaceMmSs(s.pace) ?? 0) : s.avgHR;
-  const maxMile = Math.max(...runs.flatMap(r => r.mileSplits.map(s => s.mile)));
-  const xf = mile => maxMile <= 1 ? W / 2 : ((mile - 1) / (maxMile - 1)) * W;
-  const allTrends = runs.flatMap(r => { const t = olsLinearTrend(r.mileSplits.map(getVal)); return [t[0], t[t.length-1]]; });
-  const allVals = runs.flatMap(r => r.mileSplits.map(getVal));
+  const maxMile = Math.max(...trimmedRuns.flatMap(r => r.mileSplits.map(s => s.mile)));
+  const minMile = Math.min(...trimmedRuns.flatMap(r => r.mileSplits.map(s => s.mile)));
+  const xf = mile => maxMile <= minMile ? W / 2 : ((mile - minMile) / (maxMile - minMile)) * W;
+  const allTrends = trimmedRuns.flatMap(r => { const t = olsLinearTrend(r.mileSplits.map(getVal)); return [t[0], t[t.length-1]]; });
+  const allVals = trimmedRuns.flatMap(r => r.mileSplits.map(getVal));
   let mn = Math.min(...allVals, ...allTrends), mx = Math.max(...allVals, ...allTrends);
   const pad = (mx - mn) * 0.25 || 0.001; mn -= pad; mx += pad;
   const yf = v => PT + (1 - (v - mn) / (mx - mn)) * (H - PT - PB);
@@ -192,7 +195,7 @@ function RunSplitChart({ runs }) {
     const rect = e.currentTarget.getBoundingClientRect();
     const svgX = (e.clientX - rect.left) / rect.width * W;
     let bestMile = null, bestDist = Infinity;
-    for (let m = 1; m <= maxMile; m++) {
+    for (let m = minMile; m <= maxMile; m++) {
       const dx = Math.abs(xf(m) - svgX);
       if (dx < bestDist) { bestDist = dx; bestMile = m; }
     }
@@ -201,12 +204,12 @@ function RunSplitChart({ runs }) {
   const hiX = hi != null ? xf(hi) : null;
   // All runs' splits at the hovered mile
   const hiSplits = hi != null
-    ? runs.map((r, ri) => ({ ri, s: r.mileSplits.find(s => s.mile === hi) })).filter(x => x.s)
+    ? trimmedRuns.map((r, ri) => ({ ri, s: r.mileSplits.find(s => s.mile === hi) })).filter(x => x.s)
     : [];
   const fmtModeVal = s => mode === "ef" ? (s.ef * 100).toFixed(3)
     : mode === "pace" ? s.pace + "/mi"
     : Math.round(s.avgHR) + " bpm";
-  const runMeta = runs.map((r, ri) => {
+  const runMeta = trimmedRuns.map((r, ri) => {
     const vals = r.mileSplits.map(getVal);
     const t = olsLinearTrend(vals);
     const slope = vals.length >= 2 ? (t[t.length - 1] - t[0]) / (vals.length - 1) : 0;
@@ -214,9 +217,18 @@ function RunSplitChart({ runs }) {
     const slopeText = mode === "ef" ? `${slope >= 0 ? "+" : ""}${slope.toFixed(3)}/mi`
       : mode === "pace" ? `${slope * 60 >= 0 ? "+" : ""}${Math.round(slope * 60)} sec/mi`
       : `${slope >= 0 ? "+" : ""}${slope.toFixed(1)} bpm/mi`;
-    return { color: RUN_COLORS[ri % RUN_COLORS.length], trend: t, slope, good, slopeText };
+    const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    const avgText = avg == null ? null
+      : mode === "ef" ? `avg ${avg.toFixed(3)}`
+      : mode === "pace" ? (() => { const m = Math.floor(avg); return `avg ${m}:${String(Math.round((avg - m) * 60)).padStart(2, "0")}/mi`; })()
+      : `avg ${Math.round(avg)} bpm`;
+    const intercept = t[0]; // fitted value at mile minMile
+    const interceptText = mode === "ef" ? `Start: ${intercept.toFixed(3)}`
+      : mode === "pace" ? (() => { const m = Math.floor(intercept); return `Start: ${m}:${String(Math.round((intercept - m) * 60)).padStart(2, "0")}/mi`; })()
+      : `Start: ${Math.round(intercept)} bpm`;
+    return { color: RUN_COLORS[ri % RUN_COLORS.length], trend: t, slope, good, slopeText, avgText, interceptText };
   });
-  const xLabels = Array.from({ length: maxMile }, (_, i) => i + 1);
+  const xLabels = Array.from({ length: maxMile - minMile + 1 }, (_, i) => i + minMile);
   return (
     <div>
       <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
@@ -233,7 +245,7 @@ function RunSplitChart({ runs }) {
       <svg width="100%" viewBox={`0 0 ${W} ${H + 30}`} style={{ overflow: "visible", cursor: "crosshair" }}
         onMouseMove={handleMove} onMouseLeave={() => setHi(null)}>
         {hiX != null && <line x1={hiX} y1={PT} x2={hiX} y2={H} stroke="#999" strokeWidth={0.8} strokeDasharray="3 2" opacity={0.6} />}
-        {runs.map((r, ri) => {
+        {trimmedRuns.map((r, ri) => {
           const { color, trend } = runMeta[ri];
           const x0 = xf(r.mileSplits[0].mile), x1 = xf(r.mileSplits[r.mileSplits.length - 1].mile);
           const linePath = r.mileSplits.map((s, i) => `${i === 0 ? "M" : "L"}${xf(s.mile).toFixed(1)},${yf(getVal(s)).toFixed(1)}`).join(" ");
@@ -250,14 +262,14 @@ function RunSplitChart({ runs }) {
           );
         })}
         {xLabels.map(m => (
-          <text key={m} x={xf(m)} y={H + 16} textAnchor={m === 1 ? "start" : m === maxMile ? "end" : "middle"} fontSize={9} fill="#AAA">{m}</text>
+          <text key={m} x={xf(m)} y={H + 16} textAnchor={m === minMile ? "start" : m === maxMile ? "end" : "middle"} fontSize={9} fill="#AAA">{m}</text>
         ))}
         <text x={W / 2} y={H + 27} textAnchor="middle" fontSize={8} fill="#CCC" fontStyle="italic">mile</text>
         {hiSplits.length > 0 && (() => {
           const lineH = 14, vpad = 5, hpad = 8, dotR = 3, dotGap = 10;
           const tipLines = hiSplits.map(({ ri, s }) => ({
             color: runMeta[ri].color,
-            text: `${runs.length > 1 ? dateLbl(runs[ri].date) + "  " : `mi ${hi}  `}${fmtModeVal(s)}`,
+            text: `${trimmedRuns.length > 1 ? dateLbl(trimmedRuns[ri].date) + "  " : `mi ${hi}  `}${fmtModeVal(s)}`,
           }));
           const tw = Math.max(...tipLines.map(l => l.text.length)) * 5.8 + hpad * 2 + dotGap + dotR * 2;
           const th = tipLines.length * lineH + vpad * 2;
@@ -277,14 +289,16 @@ function RunSplitChart({ runs }) {
         })()}
       </svg>
       <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
-        {runs.map((r, ri) => {
-          const { color, good, slopeText } = runMeta[ri];
+        {trimmedRuns.map((r, ri) => {
+          const { color, good, slopeText, avgText, interceptText } = runMeta[ri];
           return (
             <div key={r.date} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <svg width="16" height="8" style={{ flexShrink: 0 }}><line x1="0" y1="4" x2="16" y2="4" stroke={color} strokeWidth="2" /><circle cx="8" cy="4" r="2.5" fill={color} /></svg>
               <span style={{ fontSize: 12, color: "#555", minWidth: 56 }}>{dateLbl(r.date)}</span>
+              {r.distance != null && <span style={{ fontSize: 12, color: "#888" }}>{r.distance} mi</span>}
+              {avgText && <span style={{ fontSize: 12, color: "#888" }}><strong style={{ color: "#1A1A1A" }}>{avgText}</strong></span>}
               <span style={{ fontSize: 12, color: "#888" }}>Trend <strong style={{ color: good ? "#1D9E75" : "#E05C5C" }}>{slopeText}</strong></span>
-              {r.ef0 != null && <span style={{ fontSize: 12, color: "#888" }}>EF₀ <strong style={{ color: "#1A1A1A" }}>{(r.ef0 * 100).toFixed(3)}</strong></span>}
+              <span style={{ fontSize: 12, color: "#888" }}><strong style={{ color: "#1A1A1A" }}>{interceptText}</strong></span>
             </div>
           );
         })}
